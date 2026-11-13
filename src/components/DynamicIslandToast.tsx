@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertCircle, Check } from 'lucide-react';
+import { memo } from 'react';
 
 export interface ToastState {
   id: number;
@@ -11,7 +12,9 @@ interface DynamicIslandToastProps {
   toast: ToastState | null;
 }
 
-export function DynamicIslandToast({ toast }: DynamicIslandToastProps) {
+export const DynamicIslandToast = memo(function DynamicIslandToast({
+  toast,
+}: DynamicIslandToastProps) {
   return (
     <div
       className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4"
@@ -51,4 +54,4 @@ export function DynamicIslandToast({ toast }: DynamicIslandToastProps) {
       </AnimatePresence>
     </div>
   );
-}
+});

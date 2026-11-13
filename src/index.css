@@ -31,22 +31,50 @@
 }
 
 .liquid-glass-search {
-  background: rgba(44, 44, 46, 0.72);
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-top: 1px solid rgba(255, 255, 255, 0.30);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 28px rgba(48, 209, 88, 0.09);
-  transition: background-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.04) 48%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.38),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.10),
+    0 14px 34px rgba(0, 0, 0, 0.65);
+  transition: border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .liquid-glass-search:focus-within {
-  background: rgba(50, 50, 54, 0.78);
-  border-color: rgba(255, 255, 255, 0.22);
-  border-top-color: rgba(255, 255, 255, 0.38);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.7), 0 0 32px rgba(48, 209, 88, 0.18);
+  border-color: rgba(48, 209, 88, 0.45);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.12),
+    0 14px 34px rgba(0, 0, 0, 0.65),
+    0 0 24px rgba(48, 209, 88, 0.16);
+}
+
+.liquid-glass-paste {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 209, 88, 0.22) 0%,
+    rgba(48, 209, 88, 0.08) 100%
+  );
+  border: 1px solid rgba(48, 209, 88, 0.32);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+  transition: background 180ms ease-out, border-color 180ms ease-out,
+    box-shadow 180ms ease-out;
+}
+
+.liquid-glass-paste:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(48, 209, 88, 0.28) 0%,
+    rgba(48, 209, 88, 0.12) 100%
+  );
+  border-color: rgba(48, 209, 88, 0.46);
 }
 
 .title-ambient-glow {

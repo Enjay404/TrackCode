@@ -101,13 +101,19 @@ export function BottomSheet({
 
   useEffect(() => {
     if (!track) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [track, onClose]);
 
   const handleManualCopy = () => {
@@ -206,15 +212,19 @@ export function BottomSheet({
             />
 
             {/* Top grabber pill + dismiss icon */}
-            <div className="relative flex items-center justify-center pb-4">
+            <div className="relative z-20 flex items-center justify-center pb-4">
               <div className="h-[5px] w-9 rounded-full bg-white/25" />
               <motion.button
                 type="button"
-                onClick={onClose}
-                whileTap={{ scale: 0.97 }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+                whileTap={{ scale: 0.94 }}
                 transition={SPRING_BUTTON}
                 aria-label="Close track details"
-                className="absolute right-0 top-[-2px] flex h-11 w-11 items-center justify-center rounded-full text-[#8E8E93] active:bg-[#2C2C2E] focus-visible:outline-none"
+                className="absolute right-0 top-[-2px] z-20 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-[#2C2C2E] focus-visible:outline-none"
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2C2C2E] text-[#AEAEB2]">
                   <X className="h-4 w-4" />
@@ -235,6 +245,8 @@ export function BottomSheet({
                     src={artSrc}
                     alt={`${track.albumName || track.name} artwork`}
                     referrerPolicy="no-referrer"
+                    decoding="async"
+                    fetchPriority="high"
                     onError={() => setImgError(true)}
                     className="h-full w-full object-cover"
                   />
@@ -314,11 +326,12 @@ export function BottomSheet({
               <div className="mt-5 space-y-3">
                 <motion.button
                   type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={handleManualCopy}
                   whileTap={{ scale: 0.985 }}
                   transition={SPRING_BUTTON}
                   aria-label={`Copy ${formattedIsrc}`}
-                  className="group relative flex w-full items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 hover:bg-[#323234] active:bg-[#3A3A3C] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                  className="group relative flex w-full cursor-pointer items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 hover:bg-[#323234] active:bg-[#3A3A3C] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                 >
                   {/* Subtle GPU-composited #30D158 emerald border glow overlay */}
                   <motion.div
@@ -331,8 +344,8 @@ export function BottomSheet({
                         : { opacity: 0 }
                     }
                     transition={{
-                      duration: 2.4,
-                      times: [0, 0.14, 0.65, 1],
+                      duration: 1.5,
+                      times: [0, 0.15, 0.55, 1],
                       ease: 'easeOut',
                     }}
                     className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]/85 shadow-[0_0_12px_rgba(48,209,88,0.16)]"
@@ -356,10 +369,11 @@ export function BottomSheet({
 
                 <motion.button
                   type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={handleManualCopy}
                   whileTap={{ scale: 0.97 }}
                   transition={SPRING_BUTTON}
-                  className={`flex min-h-[50px] w-full items-center justify-center gap-2 rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-150 focus-visible:outline-none ${
+                  className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-150 focus-visible:outline-none ${
                     copiedState
                       ? 'bg-[#30D158] text-black'
                       : 'bg-white text-black active:bg-[#2C2C2E] active:text-white'
@@ -405,6 +419,7 @@ export function BottomSheet({
 
                 <motion.button
                   type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onSearchOtherVersions(track)}
                   whileTap={{ scale: 0.97 }}
                   transition={SPRING_BUTTON}

@@ -1,5 +1,16 @@
 const colorCache = new Map<string, string>();
+const MAX_COLOR_CACHE = 100;
 const DEFAULT_GLOW_RGB = '110, 110, 128';
+
+function setColorCache(url: string, rgb: string) {
+  if (colorCache.size >= MAX_COLOR_CACHE) {
+    const oldest = colorCache.keys().next().value;
+    if (oldest !== undefined) {
+      colorCache.delete(oldest);
+    }
+  }
+  colorCache.set(url, rgb);
+}
 
 export async function extractDominantColorRgb(imageUrl: string | null): Promise<string> {
   if (!imageUrl) return DEFAULT_GLOW_RGB;
@@ -10,6 +21,7 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    img.decoding = 'async';
 
     const timer = window.setTimeout(() => {
       resolve(DEFAULT_GLOW_RGB);
@@ -19,7 +31,7 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
       window.clearTimeout(timer);
       try {
         const canvas = document.createElement('canvas');
-        const size = 24;
+        const size = 16;
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -59,7 +71,7 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
         }
 
         if (weightTotal === 0) {
-          colorCache.set(imageUrl, DEFAULT_GLOW_RGB);
+          setColorCache(imageUrl, DEFAULT_GLOW_RGB);
           resolve(DEFAULT_GLOW_RGB);
           return;
         }
@@ -69,7 +81,7 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
         const bAvg = Math.min(255, Math.max(40, Math.round(bTotal / weightTotal)));
 
         const rgb = `${rAvg}, ${gAvg}, ${bAvg}`;
-        colorCache.set(imageUrl, rgb);
+        setColorCache(imageUrl, rgb);
         resolve(rgb);
       } catch {
         resolve(DEFAULT_GLOW_RGB);

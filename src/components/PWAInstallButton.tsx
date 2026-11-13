@@ -24,7 +24,7 @@ export function PWAInstallButton() {
         onClick={() => void install()}
         whileTap={{ scale: 0.97 }}
         transition={SPRING_BUTTON}
-        className="liquid-glass flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white active:bg-white/[0.12] whitespace-nowrap shrink-0"
+        className="liquid-glass flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white active:bg-white/[0.12] whitespace-nowrap shrink-0"
       >
         <Download className="h-3.5 w-3.5 text-[#30D158]" />
         <span>Install</span>
@@ -40,7 +40,7 @@ export function PWAInstallButton() {
           onClick={() => setShowIOSGuide(true)}
           whileTap={{ scale: 0.97 }}
           transition={SPRING_BUTTON}
-          className="liquid-glass flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white active:bg-white/[0.12] whitespace-nowrap shrink-0"
+          className="liquid-glass flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white active:bg-white/[0.12] whitespace-nowrap shrink-0"
         >
           <Download className="h-3.5 w-3.5 text-[#30D158]" />
           <span>Add App</span>

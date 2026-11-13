@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { ChevronRight, Disc3 } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
   ALBUM_TYPE_BADGE_STYLE,
@@ -15,7 +15,7 @@ interface TrackRowProps {
   onSelect: (track: TrackItem, copiedSync: boolean) => void;
 }
 
-export function TrackRow({ track, index, onSelect }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({ track, index, onSelect }: TrackRowProps) {
   const [imgError, setImgError] = useState(false);
 
   const handleTap = () => {
@@ -58,6 +58,7 @@ export function TrackRow({ track, index, onSelect }: TrackRowProps) {
             alt={`${track.albumName || track.name} cover`}
             referrerPolicy="no-referrer"
             loading="lazy"
+            decoding="async"
             onError={() => setImgError(true)}
             className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]"
           />
@@ -106,4 +107,4 @@ export function TrackRow({ track, index, onSelect }: TrackRowProps) {
       <ChevronRight className="h-4 w-4 shrink-0 text-[#48484A] transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px]" />
     </motion.button>
   );
-}
+});

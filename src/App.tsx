@@ -3,7 +3,6 @@ import {
   ClipboardPaste,
   Copy,
   Link2,
-  Music2,
   RotateCcw,
   Search,
   Share,
@@ -13,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from './components/BottomSheet';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
+import { EmptySearchView } from './components/EmptySearchView';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { SkeletonRows } from './components/SkeletonRows';
 import { TrackRow } from './components/TrackRow';
@@ -173,8 +173,13 @@ export default function App() {
         if (err instanceof DOMException && err.name === 'AbortError') {
           return;
         }
-        const message =
-          err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+        const isOfflineError =
+          (typeof navigator !== 'undefined' && !navigator.onLine) || err instanceof TypeError;
+        const message = isOfflineError
+          ? 'You appear to be offline. Reconnect to search Spotify, or browse your Recent tracks.'
+          : err instanceof Error
+            ? err.message
+            : 'Something went wrong. Please try again.';
         setErrorMessage(message);
         setResults([]);
         setHasSearched(true);
@@ -201,14 +206,23 @@ export default function App() {
 
     if (isLinkMode) {
       void executeLookup(trimmedQuery, 'link');
-      return;
+      return () => {
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      };
     }
 
     const timer = window.setTimeout(() => {
       void executeLookup(trimmedQuery, 'search');
     }, 300);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [trimmedQuery, isLinkMode, executeLookup]);
 
   const handleSelectTrack = useCallback(
@@ -248,6 +262,10 @@ export default function App() {
   };
 
   const handleClearInput = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsLoading(false);
     setQuery('');
     setResults([]);
     setErrorMessage(null);
@@ -332,7 +350,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="relative min-h-dvh bg-black text-white">
+      <div className="relative min-h-[100dvh] bg-black text-white">
         <DynamicIslandToast toast={toast} />
 
         <motion.div
@@ -347,7 +365,7 @@ export default function App() {
             damping: 30,
             mass: 1.15,
           }}
-          className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-black"
+          className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
           style={{
             overflow: 'clip',
             paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
@@ -385,8 +403,36 @@ export default function App() {
               <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
                 TrackCode
               </h1>
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
-                ISRC FINDER
+              <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+                <span>ISRC FINDER</span>
+                <svg
+                  width="14"
+                  height="9"
+                  viewBox="0 0 32 20"
+                  fill="none"
+                  aria-label="Sri Lanka"
+                  role="img"
+                  className="h-[9px] w-[14px] shrink-0 -translate-y-[0.5px] rounded-[2px] opacity-85 ring-1 ring-white/15"
+                >
+                  <rect width="32" height="20" fill="#E5AE2B" />
+                  <rect x="1.5" y="1.5" width="4.4" height="17" fill="#00534E" />
+                  <rect x="5.9" y="1.5" width="4.4" height="17" fill="#D96B08" />
+                  <rect x="11.8" y="1.5" width="18.7" height="17" fill="#821536" />
+                  <circle cx="13.2" cy="2.9" r="0.8" fill="#E5AE2B" />
+                  <circle cx="29.1" cy="2.9" r="0.8" fill="#E5AE2B" />
+                  <circle cx="13.2" cy="17.1" r="0.8" fill="#E5AE2B" />
+                  <circle cx="29.1" cy="17.1" r="0.8" fill="#E5AE2B" />
+                  <path
+                    d="M16.2 5.3v6.1M15.4 10.6h1.6"
+                    stroke="#E5AE2B"
+                    strokeWidth="0.95"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M16.9 9.1c1-.7 2.4-.8 3.6-.3.8-1 2.2-1.2 3.3-.6.9.5 1.5 1.4 1.4 2.4.7-.3 1.4.1 1.6.8.2.8-.3 1.6-1 1.9l.8 1.5h-1.3l-.8-1.5c-.7.1-1.4-.1-1.9-.5l-.4 2h-1.2l.2-2.1c-.7-.1-1.4-.3-2-.7l-.9 2.8h-1.2l.8-3c-.6-.2-1.1-.6-1.4-1.1-.3-.5-.1-1.2.4-1.6z"
+                    fill="#E5AE2B"
+                  />
+                </svg>
               </p>
             </div>
 
@@ -469,11 +515,16 @@ export default function App() {
               ) : (
                 <motion.button
                   type="button"
-                  onClick={handleClearInput}
-                  whileTap={{ scale: 0.97 }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleClearInput();
+                  }}
+                  whileTap={{ scale: 0.94 }}
                   transition={SPRING_BUTTON}
                   aria-label="Clear search"
-                  className="mr-0.5 flex h-[44px] w-[44px] shrink-0 items-center justify-center text-[#8E8E93]"
+                  className="relative z-20 mr-0.5 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
                 >
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
                     <X className="h-3.5 w-3.5 stroke-[2.6]" />
@@ -484,7 +535,7 @@ export default function App() {
           </div>
 
           {/* Main Content Area */}
-          <main className="relative z-10 flex-1 px-4 pt-2 pb-6">
+          <main className="relative z-10 flex-1 px-4 pt-2 pb-24">
             {trimmedQuery ? (
               <>
                 {isLoading && (
@@ -515,17 +566,11 @@ export default function App() {
                 )}
 
                 {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
-                  <div className="liquid-glass rounded-[20px] px-5 py-10 text-center">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-[#8E8E93]">
-                      <Music2 className="h-5 w-5" />
-                    </div>
-                    <p className="mt-3 text-[15px] font-semibold text-white">
-                      No matching tracks
-                    </p>
-                    <p className="mt-1 text-[13px] text-[#8E8E93]">
-                      Try adding the artist name or pasting a Spotify share link.
-                    </p>
-                  </div>
+                  <EmptySearchView
+                    query={trimmedQuery}
+                    onClearSearch={handleClearInput}
+                    onPasteLink={() => void handlePasteFromClipboard()}
+                  />
                 )}
 
                 {!isLoading && !errorMessage && results.length > 0 && (
@@ -637,29 +682,44 @@ export default function App() {
             )}
           </main>
 
-          {/* Custom Creator Footer */}
-          <footer className="relative z-10 mt-auto flex justify-center px-4 pt-2 pb-2">
-            <motion.a
-              href="https://instagram.com/enjay404"
-              target="_blank"
-              rel="noopener noreferrer"
-              whileTap={{ scale: 0.96 }}
-              transition={SPRING_BUTTON}
-              className="liquid-glass inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-4 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:bg-white/[0.1] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-            >
-              <span>Made with ❤️ by</span>
-              <span className="font-medium text-white">@enjay404</span>
-            </motion.a>
-          </footer>
-
-          {/* Offline Status Indicator */}
-          {!isOnline && (
-            <div className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg">
-              <WifiOff className="h-3.5 w-3.5" />
-              <span>Offline — Recent tracks still available</span>
-            </div>
-          )}
         </motion.div>
+
+        {/* Pinned Floating Creator Footer Dock (z-20: above content, covered by BottomSheet z-40) */}
+        <footer
+          className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-4 pt-6 pb-[max(14px,env(safe-area-inset-bottom))]"
+          style={{
+            background:
+              'linear-gradient(to top, rgba(0, 0, 0, 0.94) 40%, rgba(0, 0, 0, 0.6) 72%, rgba(0, 0, 0, 0) 100%)',
+          }}
+        >
+          <motion.a
+            href="https://instagram.com/enjay404"
+            target="_blank"
+            rel="noopener noreferrer"
+            whileTap={{ scale: 0.96 }}
+            transition={SPRING_BUTTON}
+            className="pointer-events-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-4 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+            style={{
+              background: 'rgba(28, 28, 30, 0.72)',
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow:
+                'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+            }}
+          >
+            <span>Made with ❤️ by</span>
+            <span className="font-medium text-white">@enjay404</span>
+          </motion.a>
+        </footer>
+
+        {/* Offline Status Indicator */}
+        {!isOnline && (
+          <div className="fixed bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span>Offline — Recent tracks still available</span>
+          </div>
+        )}
 
         <BottomSheet
           track={selectedTrack}

@@ -13,8 +13,12 @@ export function isSpotifyTrackLink(input: string): boolean {
   if (!trimmed) return false;
 
   return (
-    /open\.spotify\.com\/(?:intl-[a-z-]+\/)?track\/[A-Za-z0-9]{22}/i.test(trimmed) ||
-    /spotify:(?:\/\/)?track[:/][A-Za-z0-9]{22}/i.test(trimmed) ||
+    /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:track|album|playlist|artist|episode|show)\/[A-Za-z0-9]+/i.test(
+      trimmed
+    ) ||
+    /spotify:(?:\/\/)?(?:track|album|playlist|artist|episode|show)[:/][A-Za-z0-9]+/i.test(
+      trimmed
+    ) ||
     /(?:https?:\/\/)?(?:spotify\.link|spoti\.fi)\/[A-Za-z0-9_-]+/i.test(trimmed) ||
     /^[A-Za-z0-9]{22}$/.test(trimmed)
   );
@@ -100,5 +104,32 @@ export function saveGuideExpandedPreference(isOpen: boolean): void {
     localStorage.setItem(GUIDE_OPEN_STORAGE_KEY, String(isOpen));
   } catch {
     // Ignore storage errors
+  }
+}
+
+const POPULAR_HITS_CACHE_KEY = 'trackcode_popular_hits_v1';
+const POPULAR_HITS_TTL_MS = 6 * 60 * 60 * 1000;
+
+export function loadCachedPopularHits(): TrackItem[] {
+  try {
+    const raw = localStorage.getItem(POPULAR_HITS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { tracks?: TrackItem[]; cachedAt?: number };
+    if (!parsed || !Array.isArray(parsed.tracks) || !parsed.cachedAt) return [];
+    if (Date.now() - parsed.cachedAt > POPULAR_HITS_TTL_MS) return [];
+    return parsed.tracks;
+  } catch {
+    return [];
+  }
+}
+
+export function saveCachedPopularHits(tracks: TrackItem[]): void {
+  try {
+    localStorage.setItem(
+      POPULAR_HITS_CACHE_KEY,
+      JSON.stringify({ tracks, cachedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage quota errors
   }
 }

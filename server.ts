@@ -10,10 +10,47 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const UPSTREAM_TIMEOUT_MS = 8000;
 
 interface TokenCache {
   accessToken: string;
   expiresAt: number;
+}
+
+class BoundedTtlCache<T> {
+  private readonly store = new Map<string, { value: T; expiresAt: number }>();
+  private readonly maxSize: number;
+  private readonly ttlMs: number;
+
+  constructor(maxSize: number, ttlMs: number) {
+    this.maxSize = maxSize;
+    this.ttlMs = ttlMs;
+  }
+
+  get(key: string): T | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.store.delete(key);
+      return null;
+    }
+    // Refresh LRU order
+    this.store.delete(key);
+    this.store.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: T): void {
+    if (this.store.has(key)) {
+      this.store.delete(key);
+    } else if (this.store.size >= this.maxSize) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.store.delete(oldestKey);
+      }
+    }
+    this.store.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+  }
 }
 
 let tokenCache: TokenCache | null = null;
@@ -51,6 +88,7 @@ async function fetchSpotifyToken(forceRefresh = false): Promise<string> {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -79,6 +117,7 @@ async function spotifyGet<T>(url: string): Promise<T> {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (res.status === 401) {
@@ -87,6 +126,7 @@ async function spotifyGet<T>(url: string): Promise<T> {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   }
 
@@ -203,10 +243,41 @@ function isAllowedSpotifyHost(hostname: string): boolean {
   return ALLOWED_REDIRECT_HOSTS.has(normalized) || normalized.endsWith('.spotify.com');
 }
 
-async function resolveSpotifyTrackId(rawInput: string): Promise<string | null> {
+type NonTrackSpotifyKind = 'album' | 'playlist' | 'artist' | 'episode' | 'show';
+
+type ResolveTrackResult =
+  | { status: 'track'; trackId: string }
+  | { status: 'non_track'; kind: NonTrackSpotifyKind }
+  | { status: 'invalid' };
+
+function detectNonTrackSpotifyType(value: string): NonTrackSpotifyKind | null {
+  const trimmed = value.trim();
+  const uriMatch = trimmed.match(
+    /spotify:(?:\/\/)?(album|playlist|artist|episode|show)[:/][A-Za-z0-9]+/i
+  );
+  if (uriMatch) {
+    return uriMatch[1].toLowerCase() as NonTrackSpotifyKind;
+  }
+
+  const urlMatch = trimmed.match(
+    /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(album|playlist|artist|episode|show)\/[A-Za-z0-9]+/i
+  );
+  if (urlMatch) {
+    return urlMatch[1].toLowerCase() as NonTrackSpotifyKind;
+  }
+
+  return null;
+}
+
+async function resolveSpotifyTrackId(rawInput: string): Promise<ResolveTrackResult> {
   const directId = extractTrackIdFromText(rawInput);
   if (directId) {
-    return directId;
+    return { status: 'track', trackId: directId };
+  }
+
+  const directNonTrack = detectNonTrackSpotifyType(rawInput);
+  if (directNonTrack) {
+    return { status: 'non_track', kind: directNonTrack };
   }
 
   const trimmed = rawInput.trim();
@@ -217,32 +288,39 @@ async function resolveSpotifyTrackId(rawInput: string): Promise<string | null> {
       : null;
 
   if (!candidateUrlStr) {
-    return null;
+    return { status: 'invalid' };
   }
 
   let currentUrl: URL;
   try {
     currentUrl = new URL(candidateUrlStr);
   } catch {
-    return null;
+    return { status: 'invalid' };
   }
 
   if (!isAllowedSpotifyHost(currentUrl.hostname)) {
-    return null;
+    return { status: 'invalid' };
   }
 
   // Manually follow up to 6 redirects so only trusted Spotify domains are traversed
   for (let hop = 0; hop < 6; hop++) {
-    const idFromUrl = extractTrackIdFromText(currentUrl.toString());
+    const currentUrlStr = currentUrl.toString();
+    const idFromUrl = extractTrackIdFromText(currentUrlStr);
     if (idFromUrl) {
-      return idFromUrl;
+      return { status: 'track', trackId: idFromUrl };
+    }
+    const nonTrackFromUrl = detectNonTrackSpotifyType(currentUrlStr);
+    if (nonTrackFromUrl) {
+      return { status: 'non_track', kind: nonTrackFromUrl };
     }
 
-    const res = await fetch(currentUrl.toString(), {
+    const res = await fetch(currentUrlStr, {
       method: 'GET',
       redirect: 'manual',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     });
@@ -252,9 +330,14 @@ async function resolveSpotifyTrackId(rawInput: string): Promise<string | null> {
       if (!location) break;
 
       const nextUrl = new URL(location, currentUrl);
-      const idFromNext = extractTrackIdFromText(nextUrl.toString());
+      const nextUrlStr = nextUrl.toString();
+      const idFromNext = extractTrackIdFromText(nextUrlStr);
       if (idFromNext) {
-        return idFromNext;
+        return { status: 'track', trackId: idFromNext };
+      }
+      const nonTrackFromNext = detectNonTrackSpotifyType(nextUrlStr);
+      if (nonTrackFromNext) {
+        return { status: 'non_track', kind: nonTrackFromNext };
       }
 
       if (!isAllowedSpotifyHost(nextUrl.hostname)) {
@@ -268,20 +351,29 @@ async function resolveSpotifyTrackId(rawInput: string): Promise<string | null> {
       const html = await res.text();
       const idFromHtml = extractTrackIdFromText(html);
       if (idFromHtml) {
-        return idFromHtml;
+        return { status: 'track', trackId: idFromHtml };
+      }
+      const nonTrackFromHtml = detectNonTrackSpotifyType(html);
+      if (nonTrackFromHtml) {
+        return { status: 'non_track', kind: nonTrackFromHtml };
       }
     }
     break;
   }
 
-  return null;
+  return { status: 'invalid' };
 }
 
 async function createServer() {
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
 
+  const searchCache = new BoundedTtlCache<TrackItem[]>(200, 5 * 60 * 1000);
+  const trackCache = new BoundedTtlCache<TrackItem>(300, 30 * 60 * 1000);
+  const POPULAR_HITS_TTL_MS = 30 * 60 * 1000;
   let quickTryCache: { tracks: TrackItem[]; expiresAt: number } | null = null;
+  let inflightQuickTryPromise: Promise<TrackItem[]> | null = null;
   const QUICK_TRY_QUERIES = [
     'track:"Blinding Lights" artist:"The Weeknd"',
     'track:"Timeless" artist:"The Weeknd"',
@@ -293,45 +385,66 @@ async function createServer() {
     const configured = Boolean(
       process.env.SPOTIFY_CLIENT_ID?.trim() && process.env.SPOTIFY_CLIENT_SECRET?.trim()
     );
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, configured });
   });
 
   app.get('/api/quick-try', async (_req, res) => {
     const now = Date.now();
     if (quickTryCache && quickTryCache.expiresAt > now) {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
       res.json({ tracks: quickTryCache.tracks });
       return;
     }
 
     try {
-      const results = await Promise.all(
-        QUICK_TRY_QUERIES.map(async (q) => {
-          const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`;
-          const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(url);
-          const first = data.tracks?.items?.[0];
-          return first && first.id ? normalizeTrack(first) : null;
-        })
-      );
-
-      const tracks = results.filter((t): t is TrackItem => t !== null);
-      if (tracks.length > 0) {
-        quickTryCache = {
-          tracks,
-          expiresAt: now + 12 * 60 * 60 * 1000,
-        };
+      if (!inflightQuickTryPromise) {
+        inflightQuickTryPromise = Promise.all(
+          QUICK_TRY_QUERIES.map(async (q) => {
+            const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`;
+            const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(url);
+            const first = data.tracks?.items?.[0];
+            return first && first.id ? normalizeTrack(first) : null;
+          })
+        )
+          .then((results) => {
+            const tracks = results.filter((t): t is TrackItem => t !== null);
+            if (tracks.length > 0) {
+              quickTryCache = {
+                tracks,
+                expiresAt: Date.now() + POPULAR_HITS_TTL_MS,
+              };
+            }
+            return tracks;
+          })
+          .finally(() => {
+            inflightQuickTryPromise = null;
+          });
       }
+
+      const tracks = await inflightQuickTryPromise;
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
       res.json({ tracks });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Quick Try fetch error:', message);
+      console.error('Popular Hits fetch error:', message);
       res.json({ tracks: quickTryCache?.tracks ?? [] });
     }
   });
 
   app.get('/api/search', async (req, res) => {
-    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const query = rawQuery.slice(0, 120).trim();
     if (!query) {
       res.status(400).json({ error: 'Search query is required.' });
+      return;
+    }
+
+    const cacheKey = query.toLowerCase();
+    const cached = searchCache.get(cacheKey);
+    if (cached) {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.json({ tracks: cached, query });
       return;
     }
 
@@ -342,7 +455,9 @@ async function createServer() {
       // Preserve Spotify's native search result order; do not re-sort or filter by popularity
       const items = data.tracks?.items ?? [];
       const tracks = items.filter((item) => item && item.id).map(normalizeTrack);
+      searchCache.set(cacheKey, tracks);
 
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       res.json({ tracks, query });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -359,24 +474,43 @@ async function createServer() {
   });
 
   app.get('/api/track', async (req, res) => {
-    const input = typeof req.query.input === 'string' ? req.query.input.trim() : '';
+    const rawInput = typeof req.query.input === 'string' ? req.query.input.trim() : '';
+    const input = rawInput.slice(0, 500).trim();
     if (!input) {
       res.status(400).json({ error: 'Spotify track link or URI is required.' });
       return;
     }
 
     try {
-      const trackId = await resolveSpotifyTrackId(input);
-      if (!trackId) {
+      const resolved = await resolveSpotifyTrackId(input);
+      if (resolved.status === 'non_track') {
         res.status(400).json({
-          error: 'Could not find a Spotify track ID in that link. Try a full track link or search by song name.',
+          error: `That's a Spotify ${resolved.kind} link. Open a specific song on Spotify and paste its track link instead.`,
+          code: 'NON_TRACK_SPOTIFY_LINK',
+        });
+        return;
+      }
+      if (resolved.status !== 'track') {
+        res.status(400).json({
+          error: 'Could not find a Spotify track ID in that link. Try a song link or search by title.',
           code: 'INVALID_SPOTIFY_LINK',
         });
         return;
       }
 
+      const { trackId } = resolved;
+
+      const cachedTrack = trackCache.get(trackId);
+      if (cachedTrack) {
+        res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+        res.json({ track: cachedTrack });
+        return;
+      }
+
       const rawTrack = await spotifyGet<SpotifyRawTrack>(`https://api.spotify.com/v1/tracks/${trackId}`);
       const track = normalizeTrack(rawTrack);
+      trackCache.set(trackId, track);
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
       res.json({ track });
     } catch (error) {
       const errWithStatus = error as Error & { status?: number };
@@ -416,7 +550,18 @@ async function createServer() {
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(__dirname, 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      '/assets',
+      express.static(path.join(distDir, 'assets'), {
+        maxAge: '1y',
+        immutable: true,
+      })
+    );
+    app.use(
+      express.static(distDir, {
+        maxAge: '1h',
+      })
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
