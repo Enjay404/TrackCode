@@ -12,12 +12,20 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         manifestFilename: 'manifest.json',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
+        includeAssets: [
+          'favicon.ico',
+          'favicon-16x16.png',
+          'favicon-32x32.png',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+        ],
         manifest: {
           id: '/',
           name: 'TrackCode',
           short_name: 'TrackCode',
-          description: 'Retrieve Spotify track ISRC codes formatted as ISRC:XXXXXXXXXXXX for Instagram Music search.',
+          description: 'Find the ISRC for 100+ million tracks on Spotify.',
           theme_color: '#000000',
           background_color: '#000000',
           display: 'standalone',

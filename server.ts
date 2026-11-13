@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { createServer as createHttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AlbumType, TrackItem } from './src/types/track.ts';
@@ -400,10 +401,16 @@ async function createServer() {
     res.status(404).json({ error: 'API endpoint not found.' });
   });
 
+  const httpServer = createHttpServer(app);
+
   if (!IS_PRODUCTION) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+        ws: { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -415,7 +422,7 @@ async function createServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`TrackCode server listening on http://0.0.0.0:${PORT}`);
   });
 }
