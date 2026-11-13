@@ -1,7 +1,12 @@
 import { AnimatePresence, motion, type PanInfo } from 'motion/react';
-import { ChevronDown, Copy, Disc3, ExternalLink, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronDown, Copy, Disc3, Search, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
+import {
+  ALBUM_TYPE_BADGE_STYLE,
+  ALBUM_TYPE_LABEL,
+  EXPLICIT_BADGE_STYLE,
+} from '../utils/badgeStyles';
 import { extractDominantColorRgb } from '../utils/dominantColor';
 import {
   formatIsrcCode,
@@ -39,6 +44,15 @@ export function BottomSheet({
   const [copiedState, setCopiedState] = useState(false);
   const [pulseCount, setPulseCount] = useState(0);
   const [guideOpen, setGuideOpen] = useState<boolean>(() => loadGuideExpandedPreference());
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!track) return;
@@ -60,16 +74,29 @@ export function BottomSheet({
   }, [track]);
 
   useEffect(() => {
+    if (copyTimerRef.current) {
+      window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = null;
+    }
     if (!track || !track.isrc || autoCopiedSignal === 0) {
       setCopiedState(false);
+      setPulseCount(0);
       return;
     }
+    setPulseCount(0);
     setCopiedState(true);
-    setPulseCount((c) => c + 1);
-    const timer = window.setTimeout(() => {
+    const glowDelayTimer = window.setTimeout(() => {
+      setPulseCount((c) => c + 1);
+    }, 420);
+    copyTimerRef.current = window.setTimeout(() => {
       setCopiedState(false);
-    }, 2200);
-    return () => window.clearTimeout(timer);
+    }, 2600);
+    return () => {
+      window.clearTimeout(glowDelayTimer);
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
   }, [track, autoCopiedSignal]);
 
   useEffect(() => {
@@ -90,12 +117,15 @@ export function BottomSheet({
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(10);
       }
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
       setCopiedState(true);
       setPulseCount((c) => c + 1);
       onCopied(track.isrc);
-      window.setTimeout(() => {
+      copyTimerRef.current = window.setTimeout(() => {
         setCopiedState(false);
-      }, 2200);
+      }, 2600);
     }
   };
 
@@ -219,24 +249,61 @@ export function BottomSheet({
                 <h2 className="line-clamp-2 text-[19px] font-semibold leading-tight tracking-[-0.02em] text-white">
                   {track.name}
                 </h2>
-                <p className="mt-1 truncate text-[15px] text-[#AEAEB2]">
-                  {track.artists}
+                <p className="mt-1 inline-flex max-w-full items-center gap-1.5 text-[15px] text-[#AEAEB2]">
+                  <span className="truncate">{track.artists}</span>
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-label="Verified"
+                    className="h-[15px] w-[15px] shrink-0"
+                  >
+                    <rect
+                      x="3"
+                      y="3"
+                      width="18"
+                      height="18"
+                      rx="4.2"
+                      fill="#0095F6"
+                    />
+                    <rect
+                      x="3"
+                      y="3"
+                      width="18"
+                      height="18"
+                      rx="4.2"
+                      transform="rotate(45 12 12)"
+                      fill="#0095F6"
+                    />
+                    <path
+                      d="M8.4 12.3l2.3 2.4 4.9-5.2"
+                      stroke="#FFFFFF"
+                      strokeWidth="2.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-[#8E8E93]">
-                  <span className="uppercase tracking-wide font-semibold text-[#AEAEB2]">
-                    {track.albumType}
+                  <span
+                    className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.04em]"
+                    style={ALBUM_TYPE_BADGE_STYLE[track.albumType]}
+                  >
+                    {ALBUM_TYPE_LABEL[track.albumType]}
                   </span>
                   {track.releaseYear && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="tabular-nums">{track.releaseYear}</span>
-                    </>
+                    <span className="tabular-nums font-medium text-[#8E8E93]">
+                      {track.releaseYear}
+                    </span>
                   )}
                   {track.explicit && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span>Explicit</span>
-                    </>
+                    <span
+                      className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.02em]"
+                      style={EXPLICIT_BADGE_STYLE}
+                    >
+                      Explicit
+                    </span>
                   )}
                 </div>
               </div>
@@ -245,15 +312,30 @@ export function BottomSheet({
             {/* Monospace ISRC pill + Primary Copy Action */}
             {formattedIsrc ? (
               <div className="mt-5 space-y-3">
-                <div className="relative flex items-center justify-between rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5">
-                  {/* Brief GPU-composited #30D158 border pulse overlay */}
+                <motion.button
+                  type="button"
+                  onClick={handleManualCopy}
+                  whileTap={{ scale: 0.985 }}
+                  transition={SPRING_BUTTON}
+                  aria-label={`Copy ${formattedIsrc}`}
+                  className="group relative flex w-full items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 hover:bg-[#323234] active:bg-[#3A3A3C] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                >
+                  {/* Subtle GPU-composited #30D158 emerald border glow overlay */}
                   <motion.div
                     key={`pulse-${pulseCount}`}
                     aria-hidden="true"
-                    initial={pulseCount > 0 ? { opacity: 0.95, scale: 0.99 } : { opacity: 0 }}
-                    animate={{ opacity: 0, scale: 1 }}
-                    transition={{ duration: 0.65, ease: 'easeOut' }}
-                    className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]"
+                    initial={{ opacity: 0, scale: 0.995 }}
+                    animate={
+                      pulseCount > 0
+                        ? { opacity: [0, 0.85, 0.7, 0], scale: [0.995, 1, 1, 1] }
+                        : { opacity: 0 }
+                    }
+                    transition={{
+                      duration: 2.4,
+                      times: [0, 0.14, 0.65, 1],
+                      ease: 'easeOut',
+                    }}
+                    className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]/85 shadow-[0_0_12px_rgba(48,209,88,0.16)]"
                   />
                   <div className="min-w-0">
                     <div className="text-[11px] font-medium tracking-wide text-[#8E8E93]">
@@ -263,16 +345,14 @@ export function BottomSheet({
                       {formattedIsrc}
                     </div>
                   </div>
-                  <a
-                    href={track.spotifyUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open track in Spotify"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#8E8E93] transition-colors active:bg-white/10"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </div>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#8E8E93] transition-colors duration-150 group-hover:text-white">
+                    <Copy
+                      className={`h-4 w-4 transition-colors duration-150 ${
+                        copiedState ? 'text-[#30D158]' : ''
+                      }`}
+                    />
+                  </span>
+                </motion.button>
 
                 <motion.button
                   type="button"
@@ -394,6 +474,21 @@ export function BottomSheet({
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            {/* Matching Creator Footer inside Bottom Sheet */}
+            <div className="mt-4 flex justify-center">
+              <motion.a
+                href="https://instagram.com/enjay404"
+                target="_blank"
+                rel="noopener noreferrer"
+                whileTap={{ scale: 0.96 }}
+                transition={SPRING_BUTTON}
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-white/10 bg-[#2C2C2E]/65 px-3.5 py-1.5 text-[12px] text-[#AEAEB2] transition-colors hover:bg-[#2C2C2E] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+              >
+                <span>Made with ❤️ by</span>
+                <span className="font-medium text-white">@enjay404</span>
+              </motion.a>
             </div>
           </motion.div>
         </div>
