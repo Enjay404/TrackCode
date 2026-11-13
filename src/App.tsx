@@ -26,6 +26,7 @@ import {
   saveRecentTrack,
   syncCopyIsrc,
 } from './utils/spotifyInput';
+import { playTactileClick } from './utils/sound';
 
 const SPRING_BUTTON = {
   type: 'spring' as const,
@@ -58,6 +59,8 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);
+  const skipNextAutoLookupRef = useRef<string | null>(null);
   const isOnline = useOnlineStatus();
 
   const trimmedQuery = query.trim();
@@ -129,6 +132,7 @@ export default function App() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      playTactileClick('search');
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -197,10 +201,16 @@ export default function App() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      skipNextAutoLookupRef.current = null;
       setResults([]);
       setIsLoading(false);
       setErrorMessage(null);
       setHasSearched(false);
+      return;
+    }
+
+    if (skipNextAutoLookupRef.current === trimmedQuery) {
+      skipNextAutoLookupRef.current = null;
       return;
     }
 
@@ -213,12 +223,16 @@ export default function App() {
       };
     }
 
-    const timer = window.setTimeout(() => {
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
       void executeLookup(trimmedQuery, 'search');
     }, 300);
 
     return () => {
-      window.clearTimeout(timer);
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -283,6 +297,21 @@ export default function App() {
     setSelectedTrack(null);
     const nextQuery = `${track.name} ${track.primaryArtist}`.trim();
     setQuery(nextQuery);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!trimmedQuery) {
+      playTactileClick('tap');
+      inputRef.current?.focus();
+      return;
+    }
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    skipNextAutoLookupRef.current = trimmedQuery;
+    void executeLookup(trimmedQuery, isLinkMode ? 'link' : 'search');
   };
 
   const handleRetry = () => {
@@ -399,11 +428,11 @@ export default function App() {
             className="relative z-10 flex items-start justify-between px-4 pb-3"
             style={{ paddingTop: 'max(18px, env(safe-area-inset-top))' }}
           >
-            <div>
+            <div className="flex flex-col items-start">
               <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
                 TrackCode
               </h1>
-              <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8E8E93]">
+              <p className="mt-1 flex items-center gap-1.5 pl-[1.5px] text-[11px] font-semibold leading-none uppercase tracking-[0.14em] text-[#8E8E93]">
                 <span>ISRC FINDER</span>
                 <svg
                   width="14"
@@ -412,7 +441,7 @@ export default function App() {
                   fill="none"
                   aria-label="Sri Lanka"
                   role="img"
-                  className="h-[9px] w-[14px] shrink-0 -translate-y-[0.5px] rounded-[2px] opacity-85 ring-1 ring-white/15"
+                  className="h-[9px] w-[14px] shrink-0 rounded-[2px] opacity-85 ring-1 ring-white/15"
                 >
                   <rect width="32" height="20" fill="#E5AE2B" />
                   <rect x="1.5" y="1.5" width="4.4" height="17" fill="#00534E" />
@@ -453,7 +482,15 @@ export default function App() {
 
           {/* Floating Sticky Hero Liquid Glass Search Bar */}
           <div className="sticky top-0 z-20 px-4 py-2">
-            <div className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]">
+            <form
+              onSubmit={handleSearchSubmit}
+              onPointerDown={(e) => {
+                const target = e.target as HTMLElement | null;
+                if (target?.closest('button')) return;
+                playTactileClick('tap');
+              }}
+              className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
+            >
               <span className="pointer-events-none flex pl-4">
                 {isLinkMode ? (
                   <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
@@ -504,7 +541,10 @@ export default function App() {
               {query.length === 0 ? (
                 <motion.button
                   type="button"
-                  onClick={() => void handlePasteFromClipboard()}
+                  onClick={() => {
+                    playTactileClick('tap');
+                    void handlePasteFromClipboard();
+                  }}
                   whileTap={{ scale: 0.97 }}
                   transition={SPRING_BUTTON}
                   className="mr-2 flex min-h-[36px] min-w-[44px] shrink-0 items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
@@ -519,6 +559,7 @@ export default function App() {
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
+                    playTactileClick('tap');
                     handleClearInput();
                   }}
                   whileTap={{ scale: 0.94 }}
@@ -531,7 +572,7 @@ export default function App() {
                   </span>
                 </motion.button>
               )}
-            </div>
+            </form>
           </div>
 
           {/* Main Content Area */}

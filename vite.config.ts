@@ -11,49 +11,17 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        manifestFilename: 'manifest.json',
+        manifest: false,
         includeAssets: [
           'favicon.ico',
-          'favicon-16x16.png',
-          'favicon-32x32.png',
           'apple-touch-icon.png',
-          'pwa-192x192.png',
-          'pwa-512x512.png',
+          'icon-192x192.png',
+          'icon-512x512.png',
           'pwa-maskable-512x512.png',
         ],
-        manifest: {
-          id: '/',
-          name: 'TrackCode',
-          short_name: 'TrackCode',
-          description: 'Find the ISRC for 100+ million tracks on Spotify.',
-          theme_color: '#000000',
-          background_color: '#000000',
-          display: 'standalone',
-          start_url: '/',
-          scope: '/',
-          icons: [
-            {
-              src: '/pwa-192x192.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: '/pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: '/pwa-maskable-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable',
-            },
-          ],
-        },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globIgnores: ['assets/aistudio/**', 'og-image.png', 'favicon-16x16.png', 'favicon-32x32.png', 'pwa-192x192.png', 'pwa-512x512.png'],
           navigateFallbackDenylist: [/^\/api\//],
         },
         devOptions: {

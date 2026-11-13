@@ -3,10 +3,7 @@ import express from 'express';
 import { createServer as createHttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AlbumType, TrackItem } from './src/types/track.ts';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import type { AlbumType, TrackItem } from './src/types/track';
 
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -364,24 +361,23 @@ async function resolveSpotifyTrackId(rawInput: string): Promise<ResolveTrackResu
   return { status: 'invalid' };
 }
 
-async function createServer() {
-  const app = express();
-  app.disable('x-powered-by');
-  app.use(express.json());
+const app = express();
+app.disable('x-powered-by');
+app.use(express.json());
 
-  const searchCache = new BoundedTtlCache<TrackItem[]>(200, 5 * 60 * 1000);
-  const trackCache = new BoundedTtlCache<TrackItem>(300, 30 * 60 * 1000);
-  const POPULAR_HITS_TTL_MS = 30 * 60 * 1000;
-  let quickTryCache: { tracks: TrackItem[]; expiresAt: number } | null = null;
-  let inflightQuickTryPromise: Promise<TrackItem[]> | null = null;
-  const QUICK_TRY_QUERIES = [
-    'track:"Blinding Lights" artist:"The Weeknd"',
-    'track:"Timeless" artist:"The Weeknd"',
-    'track:"Espresso" artist:"Sabrina Carpenter"',
-    'track:"BIRDS OF A FEATHER" artist:"Billie Eilish"',
-  ];
+const searchCache = new BoundedTtlCache<TrackItem[]>(200, 5 * 60 * 1000);
+const trackCache = new BoundedTtlCache<TrackItem>(300, 30 * 60 * 1000);
+const POPULAR_HITS_TTL_MS = 30 * 60 * 1000;
+let quickTryCache: { tracks: TrackItem[]; expiresAt: number } | null = null;
+let inflightQuickTryPromise: Promise<TrackItem[]> | null = null;
+const QUICK_TRY_QUERIES = [
+  'track:"Blinding Lights" artist:"The Weeknd"',
+  'track:"Timeless" artist:"The Weeknd"',
+  'track:"Espresso" artist:"Sabrina Carpenter"',
+  'track:"BIRDS OF A FEATHER" artist:"Billie Eilish"',
+];
 
-  app.get('/api/health', (_req, res) => {
+app.get('/api/health', (_req, res) => {
     const configured = Boolean(
       process.env.SPOTIFY_CLIENT_ID?.trim() && process.env.SPOTIFY_CLIENT_SECRET?.trim()
     );
@@ -531,14 +527,20 @@ async function createServer() {
     }
   });
 
-  app.use('/api', (_req, res) => {
-    res.status(404).json({ error: 'API endpoint not found.' });
-  });
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API endpoint not found.' });
+});
 
+async function startLocalServer() {
   const httpServer = createHttpServer(app);
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
 
   if (!IS_PRODUCTION) {
-    const { createServer: createViteServer } = await import('vite');
+    const viteModule = 'vite';
+    const { createServer: createViteServer } = (await import(
+      viteModule
+    )) as typeof import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -567,12 +569,14 @@ async function createServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`TrackCode server listening on http://0.0.0.0:${PORT}`);
+  httpServer.listen(PORT, '0.0.0.0');
+}
+
+if (!process.env.VERCEL) {
+  startLocalServer().catch((err) => {
+    console.error('Failed to start TrackCode server:', err);
+    process.exit(1);
   });
 }
 
-createServer().catch((err) => {
-  console.error('Failed to start TrackCode server:', err);
-  process.exit(1);
-});
+export default app;
