@@ -1,0 +1,6 @@
+{
+  "name": "TrackCode",
+  "description": "Retrieve Spotify track ISRC codes formatted as ISRC:XXXXXXXXXXXX for Instagram Music search.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

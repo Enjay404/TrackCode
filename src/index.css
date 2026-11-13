@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+  }
+}
+
+.font-mono-isrc {
+  font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.liquid-glass {
+  background: rgba(28, 28, 30, 0.55);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+@keyframes trackcode-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(44, 44, 46, 0.65);
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 100%
+  );
+  animation: trackcode-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes eq-bar-1 {
+  0%, 100% {
+    transform: scaleY(0.42);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes eq-bar-2 {
+  0%, 100% {
+    transform: scaleY(0.95);
+  }
+  50% {
+    transform: scaleY(0.35);
+  }
+}
+
+@keyframes eq-bar-3 {
+  0%, 100% {
+    transform: scaleY(0.55);
+  }
+  50% {
+    transform: scaleY(0.88);
+  }
+}
+
+.eq-bar-1 {
+  transform-origin: bottom;
+  animation: eq-bar-1 1.05s ease-in-out infinite;
+}
+
+.eq-bar-2 {
+  transform-origin: bottom;
+  animation: eq-bar-2 0.9s ease-in-out infinite;
+}
+
+.eq-bar-3 {
+  transform-origin: bottom;
+  animation: eq-bar-3 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after,
+  .eq-bar-1,
+  .eq-bar-2,
+  .eq-bar-3 {
+    animation: none;
+  }
+}
