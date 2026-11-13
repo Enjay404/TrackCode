@@ -26,7 +26,6 @@ import {
   saveRecentTrack,
   syncCopyIsrc,
 } from './utils/spotifyInput';
-import { playTactileClick } from './utils/sound';
 
 const SPRING_BUTTON = {
   type: 'spring' as const,
@@ -132,7 +131,6 @@ export default function App() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      playTactileClick('search');
       setIsLoading(true);
       setErrorMessage(null);
 
@@ -302,7 +300,6 @@ export default function App() {
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!trimmedQuery) {
-      playTactileClick('tap');
       inputRef.current?.focus();
       return;
     }
@@ -484,11 +481,6 @@ export default function App() {
           <div className="sticky top-0 z-20 px-4 py-2">
             <form
               onSubmit={handleSearchSubmit}
-              onPointerDown={(e) => {
-                const target = e.target as HTMLElement | null;
-                if (target?.closest('button')) return;
-                playTactileClick('tap');
-              }}
               className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
             >
               <span className="pointer-events-none flex pl-4">
@@ -541,10 +533,7 @@ export default function App() {
               {query.length === 0 ? (
                 <motion.button
                   type="button"
-                  onClick={() => {
-                    playTactileClick('tap');
-                    void handlePasteFromClipboard();
-                  }}
+                  onClick={() => void handlePasteFromClipboard()}
                   whileTap={{ scale: 0.97 }}
                   transition={SPRING_BUTTON}
                   className="mr-2 flex min-h-[36px] min-w-[44px] shrink-0 items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
@@ -559,7 +548,6 @@ export default function App() {
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    playTactileClick('tap');
                     handleClearInput();
                   }}
                   whileTap={{ scale: 0.94 }}
