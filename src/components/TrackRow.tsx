@@ -1,4 +1,4 @@
-import { ChevronRight, Disc3 } from 'lucide-react';
+import { ChevronRight, Disc3, Loader2, Pause, Play } from 'lucide-react';
 import { memo, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
@@ -8,11 +8,18 @@ import {
 } from '../utils/badgeStyles';
 import { copyIsrcVerified, getCachedTrackIsrc } from '../utils/spotifyInput';
 
+const CAPSULE_RING_RADIUS = 11.1;
+const CAPSULE_RING_CIRCUMFERENCE = 2 * Math.PI * CAPSULE_RING_RADIUS;
+
 interface TrackRowProps {
   track: TrackItem;
   index?: number;
   isSelected?: boolean;
   showRank?: boolean;
+  isPreviewPlaying?: boolean;
+  isPreviewLoading?: boolean;
+  previewProgress?: number;
+  onTogglePreview?: (track: TrackItem) => void;
   onSelect: (track: TrackItem, copied: boolean) => void;
 }
 
@@ -21,6 +28,10 @@ export const TrackRow = memo(function TrackRow({
   index = 0,
   isSelected = false,
   showRank = false,
+  isPreviewPlaying = false,
+  isPreviewLoading = false,
+  previewProgress = 0,
+  onTogglePreview,
   onSelect,
 }: TrackRowProps) {
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
@@ -41,15 +52,26 @@ export const TrackRow = memo(function TrackRow({
     onSelect(knownIsrc && !track.isrc ? { ...track, isrc: knownIsrc } : track, copied);
   };
 
+  const handleRowKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      void handleTap();
+    }
+  };
+
   const entranceDelayMs = Math.min(index, 12) * 45;
   const rankChange = track.rankChange ?? 0;
+  const isActivePreview = isPreviewPlaying || isPreviewLoading;
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       data-track-id={track.id}
       aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
+      onKeyDown={handleRowKeyDown}
       className={`group relative flex min-h-[70px] w-full touch-pan-y cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
         isSelected
           ? 'border-white/[0.18] border-t-white/[0.32] bg-gradient-to-b from-[#262629] to-[#18181B] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_8px_24px_rgba(0,0,0,0.45)]'
@@ -80,22 +102,85 @@ export const TrackRow = memo(function TrackRow({
         className="trackcode-light-beam trackcode-sweep-hover pointer-events-none absolute inset-0"
       />
 
-      <div className="relative z-10 h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
-        {artSrc && !imgError ? (
-          <img
-            src={artSrc}
-            alt={`${track.albumName || track.name} cover`}
-            width={48}
-            height={48}
-            referrerPolicy="no-referrer"
-            loading="lazy"
-            decoding="async"
-            onError={() => setFailedArtSrc(artSrc)}
-            className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-[#8E8E93] transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]">
-            <Disc3 className="h-5 w-5" />
+      <div className="relative z-10 h-12 w-12 shrink-0">
+        <div className="h-full w-full overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
+          {artSrc && !imgError ? (
+            <img
+              src={artSrc}
+              alt={`${track.albumName || track.name} cover`}
+              width={48}
+              height={48}
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              decoding="async"
+              onError={() => setFailedArtSrc(artSrc)}
+              className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-[#8E8E93] transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]">
+              <Disc3 className="h-5 w-5" />
+            </div>
+          )}
+        </div>
+
+        {onTogglePreview && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePreview(track);
+              }}
+              aria-label={isPreviewPlaying ? 'Pause preview' : 'Play 30-second preview'}
+              className="group/preview pointer-events-auto relative z-10 -m-2 flex cursor-pointer items-center justify-center p-2 focus-visible:outline-none"
+            >
+              <span
+                className={`relative flex h-6 w-6 items-center justify-center rounded-full border border-white/40 bg-white/22 text-white shadow-[0_2px_8px_rgba(0,0,0,0.28)] transition-all duration-150 hover:bg-white/35 group-hover/preview:bg-white/35 group-focus-visible/preview:ring-2 group-focus-visible/preview:ring-white/70 active:scale-90 ${
+                  isActivePreview
+                    ? 'scale-105 opacity-100'
+                    : 'opacity-80 group-hover:opacity-100'
+                }`}
+              >
+                {isPreviewPlaying && (
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 h-full w-full -rotate-90"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r={CAPSULE_RING_RADIUS}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.25)"
+                      strokeWidth="1.75"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r={CAPSULE_RING_RADIUS}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      strokeDasharray={CAPSULE_RING_CIRCUMFERENCE}
+                      strokeDashoffset={
+                        CAPSULE_RING_CIRCUMFERENCE *
+                        (1 - Math.min(1, Math.max(0, previewProgress)))
+                      }
+                    />
+                  </svg>
+                )}
+                {isPreviewLoading ? (
+                  <Loader2 className="relative h-3 w-3 animate-spin text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
+                ) : isPreviewPlaying ? (
+                  <Pause className="relative h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
+                ) : (
+                  <Play className="relative ml-[1px] h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
+                )}
+              </span>
+            </button>
           </div>
         )}
       </div>
@@ -160,6 +245,6 @@ export const TrackRow = memo(function TrackRow({
           isSelected ? 'text-white/90' : 'text-white/30'
         }`}
       />
-    </button>
+    </div>
   );
 });

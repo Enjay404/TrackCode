@@ -22,6 +22,7 @@ export interface TrackItem {
   };
   isrc: string | null;
   spotifyUrl: string;
+  preview?: string | null;
   source?: 'spotify' | 'deezer';
   rank?: number;
   rankChange?: number | 'NEW';

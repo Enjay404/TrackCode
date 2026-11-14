@@ -101,6 +101,13 @@ export function getCachedSearchResult(rawQuery: string): CachedSearchResult | nu
   }
 }
 
+function stripTransientPreview(track: TrackItem): TrackItem {
+  if (!('preview' in track)) return track;
+  const clean = { ...track };
+  delete clean.preview;
+  return clean;
+}
+
 export function setCachedSearchResult(
   rawQuery: string,
   payload: Omit<CachedSearchResult, 'cachedAt'>
@@ -108,8 +115,10 @@ export function setCachedSearchResult(
   const key = rawQuery.trim().toLowerCase();
   if (!key) return;
 
+  const cleanTracks = payload.tracks.map(stripTransientPreview);
   const entry: CachedSearchResult = {
     ...payload,
+    tracks: cleanTracks,
     cachedAt: Date.now(),
   };
 
@@ -228,6 +237,14 @@ export function setCachedTrackPreview(cacheKey: string, previewUrl: string | nul
   });
 }
 
+export function cacheTrackPreviewsFromTracks(tracks: TrackItem[]): void {
+  for (const track of tracks) {
+    if (typeof track.preview === 'string' && /^https?:\/\//i.test(track.preview.trim())) {
+      setCachedTrackPreview(getTrackPreviewCacheKey(track), track.preview.trim());
+    }
+  }
+}
+
 export function hydrateTracksWithCachedIsrc(tracks: TrackItem[]): TrackItem[] {
   return tracks.map((track) => {
     if (track.isrc) return track;
@@ -261,7 +278,13 @@ export function loadCachedQuickTryCharts(): CachedQuickTryCharts {
 export function saveCachedQuickTryCharts(charts: CachedQuickTryCharts): void {
   if (charts.global.length === 0 && charts.sriLanka.length === 0) return;
   try {
-    localStorage.setItem(QUICK_TRY_STORAGE_KEY, JSON.stringify(charts));
+    localStorage.setItem(
+      QUICK_TRY_STORAGE_KEY,
+      JSON.stringify({
+        global: charts.global.map(stripTransientPreview),
+        sriLanka: charts.sriLanka.map(stripTransientPreview),
+      })
+    );
   } catch {
     // Ignore storage quota errors
   }

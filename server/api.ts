@@ -265,7 +265,10 @@ interface DeezerTrackDetail extends DeezerSearchTrack {
   contributors?: Array<{ name?: string }>;
 }
 
-function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
+function normalizeDeezerTrack(
+  detail: DeezerTrackDetail,
+  includePreview = false
+): TrackItem {
   const rawIsrc = detail.isrc?.trim().toUpperCase();
   const cleanIsrc = rawIsrc && /^[A-Z0-9]{12}$/.test(rawIsrc) ? rawIsrc : rawIsrc || null;
   const contributorNames = (detail.contributors ?? [])
@@ -280,6 +283,10 @@ function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
   const coverLarge =
     detail.album?.cover_big || detail.album?.cover_medium || detail.album?.cover || null;
   const yearMatch = (detail.release_date ?? '').match(/^(\d{4})/);
+  const preview =
+    includePreview && typeof detail.preview === 'string' && /^https?:\/\//i.test(detail.preview.trim())
+      ? detail.preview.trim()
+      : null;
 
   return {
     id: `dz-${detail.id}`,
@@ -296,6 +303,7 @@ function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
     },
     isrc: cleanIsrc,
     spotifyUrl: detail.link || `https://www.deezer.com/track/${detail.id}`,
+    ...(preview ? { preview } : {}),
     source: 'deezer',
   };
 }
@@ -401,7 +409,7 @@ async function searchDeezerTracks(
   if (items.length === 0) return [];
 
   if (!hydrateDetails) {
-    return items.map((item) => normalizeDeezerTrack(item));
+    return items.map((item) => normalizeDeezerTrack(item, true));
   }
 
   const detailed = await Promise.all(
@@ -411,15 +419,15 @@ async function searchDeezerTracks(
           signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
         });
         if (!trackRes.ok) {
-          return normalizeDeezerTrack(item);
+          return normalizeDeezerTrack(item, true);
         }
         const detail = (await trackRes.json()) as DeezerTrackDetail & { error?: unknown };
         if (!detail || detail.error || !detail.id) {
-          return normalizeDeezerTrack(item);
+          return normalizeDeezerTrack(item, true);
         }
-        return normalizeDeezerTrack(detail);
+        return normalizeDeezerTrack(detail, true);
       } catch {
-        return normalizeDeezerTrack(item);
+        return normalizeDeezerTrack(item, true);
       }
     })
   );

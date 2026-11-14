@@ -43,6 +43,7 @@ import type {
 } from './types/track';
 import { SPRING_BUTTON } from './utils/motionConfig';
 import {
+  cacheTrackPreviewsFromTracks,
   clearRecentTracksStorage,
   copyIsrcVerified,
   formatIsrcCode,
@@ -153,9 +154,13 @@ interface TrackListSectionProps {
   ariaLabel: string;
   tracks: TrackItem[];
   selectedTrackId?: string | null;
+  playingTrackId?: string | null;
+  isAudioLoading?: boolean;
+  audioProgress?: number;
   showRanks?: boolean;
   isLoading?: boolean;
   skeletonCount?: number;
+  onTogglePreview?: (track: TrackItem) => void;
   onSelect: (track: TrackItem, copied: boolean) => void;
   onClear?: () => void;
 }
@@ -169,9 +174,13 @@ const TrackListSection = memo(function TrackListSection({
   ariaLabel,
   tracks,
   selectedTrackId = null,
+  playingTrackId = null,
+  isAudioLoading = false,
+  audioProgress = 0,
   showRanks = false,
   isLoading = false,
   skeletonCount = 4,
+  onTogglePreview,
   onSelect,
   onClear,
 }: TrackListSectionProps) {
@@ -200,16 +209,23 @@ const TrackListSection = memo(function TrackListSection({
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
-          tracks.map((track, index) => (
-            <TrackRow
-              key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
-              track={track}
-              index={index}
-              isSelected={selectedTrackId === track.id}
-              showRank={showRanks}
-              onSelect={onSelect}
-            />
-          ))
+          tracks.map((track, index) => {
+            const isThisActive = playingTrackId === track.id;
+            return (
+              <TrackRow
+                key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
+                track={track}
+                index={index}
+                isSelected={selectedTrackId === track.id}
+                showRank={showRanks}
+                isPreviewPlaying={isThisActive && !isAudioLoading}
+                isPreviewLoading={isThisActive && isAudioLoading}
+                previewProgress={isThisActive ? audioProgress : 0}
+                onTogglePreview={onTogglePreview}
+                onSelect={onSelect}
+              />
+            );
+          })
         )}
       </div>
       {!isLoading && footerControl}
@@ -336,7 +352,8 @@ function TrackCodeWorkspace() {
   const [activePreview, setActivePreview] = useState<{ key: string; url: string | null } | null>(
     null
   );
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+  const [loadedTrackId, setLoadedTrackId] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [autoCopiedSignal, setAutoCopiedSignal] = useState(0);
@@ -350,11 +367,17 @@ function TrackCodeWorkspace() {
   const toastTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isrcAbortControllerRef = useRef<AbortController | null>(null);
+  const previewFetchAbortRef = useRef<AbortController | null>(null);
   const fetchingTrackIdRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadedAudioSrcRef = useRef<string | null>(null);
+  const loadedAudioTrackIdRef = useRef<string | null>(null);
+  const playingTrackIdRef = useRef<string | null>(null);
+  playingTrackIdRef.current = playingTrackId;
+  const isAudioLoadingRef = useRef(false);
+  isAudioLoadingRef.current = isAudioLoading;
   const isDesktopRef = useRef(isDesktop);
   isDesktopRef.current = isDesktop;
 
@@ -408,6 +431,7 @@ function TrackCodeWorkspace() {
           const rawGlobal = Array.isArray(data.global) ? data.global : [];
           const rawSriLanka = Array.isArray(data.sriLanka) ? data.sriLanka : [];
           if (rawGlobal.length > 0 || rawSriLanka.length > 0) {
+            cacheTrackPreviewsFromTracks([...rawGlobal, ...rawSriLanka]);
             const nextCharts = {
               global: rawGlobal.length > 0 ? syncQuickTryChartHistory(rawGlobal, 'global') : [],
               sriLanka:
@@ -461,6 +485,9 @@ function TrackCodeWorkspace() {
       if (isrcAbortControllerRef.current) {
         isrcAbortControllerRef.current.abort();
       }
+      if (previewFetchAbortRef.current) {
+        previewFetchAbortRef.current.abort();
+      }
       const audio = audioRef.current;
       if (audio) {
         audio.pause();
@@ -469,6 +496,7 @@ function TrackCodeWorkspace() {
         audioRef.current = null;
       }
       loadedAudioSrcRef.current = null;
+      loadedAudioTrackIdRef.current = null;
     };
   }, []);
 
@@ -607,6 +635,7 @@ function TrackCodeWorkspace() {
           }
 
           const track = payload.track;
+          cacheTrackPreviewsFromTracks([track]);
           (document.activeElement as HTMLElement | null)?.blur();
           setResults([track]);
           setHasSearched(true);
@@ -658,6 +687,7 @@ function TrackCodeWorkspace() {
             : Array.isArray(payload.tracks)
               ? payload.tracks
               : [];
+          cacheTrackPreviewsFromTracks(rawTracks);
           const tracks = hydrateTracksWithCachedIsrc(rawTracks);
 
           setCachedSearchResult(rawInput, {
@@ -785,27 +815,6 @@ function TrackCodeWorkspace() {
       : (getCachedTrackPreview(activePreviewKey) ?? null)
     : null;
 
-  const stopAndResetAudio = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-    }
-    loadedAudioSrcRef.current = null;
-    setIsAudioPlaying(false);
-    setIsAudioLoading(false);
-    setAudioProgress(0);
-  }, []);
-
-  const activePlaybackScopeKey = isDesktop
-    ? (activeDesktopTrack?.id ?? null)
-    : (sheetTrack?.id ?? null);
-
-  useEffect(() => {
-    stopAndResetAudio();
-  }, [activePlaybackScopeKey, stopAndResetAudio]);
-
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     const audio = new Audio();
@@ -816,19 +825,23 @@ function TrackCodeWorkspace() {
       setAudioProgress(Math.min(1, Math.max(0, audio.currentTime / duration)));
     });
     audio.addEventListener('playing', () => {
+      isAudioLoadingRef.current = false;
       setIsAudioLoading(false);
-      setIsAudioPlaying(true);
     });
     audio.addEventListener('pause', () => {
-      setIsAudioPlaying(false);
+      if (isAudioLoadingRef.current || audio.ended || !audio.paused) return;
+      setPlayingTrackId(null);
     });
     audio.addEventListener('ended', () => {
-      setIsAudioPlaying(false);
+      isAudioLoadingRef.current = false;
+      setPlayingTrackId(null);
       setIsAudioLoading(false);
       setAudioProgress(0);
     });
     audio.addEventListener('error', () => {
-      setIsAudioPlaying(false);
+      if (!audio.getAttribute('src')) return;
+      isAudioLoadingRef.current = false;
+      setPlayingTrackId(null);
       setIsAudioLoading(false);
       setAudioProgress(0);
     });
@@ -836,32 +849,188 @@ function TrackCodeWorkspace() {
     return audio;
   }, []);
 
-  const handleTogglePreview = useCallback(() => {
-    if (!activePreviewUrl) return;
-    const audio = getOrCreateAudio();
-
-    if (isAudioPlaying || isAudioLoading) {
-      audio.pause();
-      setIsAudioPlaying(false);
-      setIsAudioLoading(false);
-      return;
-    }
-
-    if (loadedAudioSrcRef.current !== activePreviewUrl || !audio.getAttribute('src')) {
-      audio.src = activePreviewUrl;
-      loadedAudioSrcRef.current = activePreviewUrl;
-      setAudioProgress(0);
-    }
-
-    setIsAudioLoading(true);
-    void audio.play().catch((err) => {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+  const handleToggleTrackPreview = useCallback(
+    (targetTrack: TrackItem) => {
+      if (playingTrackIdRef.current === targetTrack.id) {
+        if (previewFetchAbortRef.current) {
+          previewFetchAbortRef.current.abort();
+          previewFetchAbortRef.current = null;
+        }
+        audioRef.current?.pause();
+        isAudioLoadingRef.current = false;
+        setPlayingTrackId(null);
+        setIsAudioLoading(false);
         return;
       }
-      setIsAudioPlaying(false);
-      setIsAudioLoading(false);
-    });
-  }, [activePreviewUrl, getOrCreateAudio, isAudioLoading, isAudioPlaying]);
+
+      if (previewFetchAbortRef.current) {
+        previewFetchAbortRef.current.abort();
+        previewFetchAbortRef.current = null;
+      }
+
+      const audio = getOrCreateAudio();
+      const previewKey = getTrackPreviewCacheKey(targetTrack);
+      const cachedIsrc = targetTrack.isrc ?? getCachedTrackIsrc(targetTrack.id);
+      const cachedPreview =
+        getCachedTrackPreview(previewKey) ??
+        (typeof targetTrack.preview === 'string' && /^https?:\/\//i.test(targetTrack.preview.trim())
+          ? targetTrack.preview.trim()
+          : undefined);
+
+      if (typeof cachedPreview === 'string' && cachedPreview) {
+        setCachedTrackPreview(previewKey, cachedPreview);
+        isAudioLoadingRef.current = true;
+        setPlayingTrackId(targetTrack.id);
+        setIsAudioLoading(true);
+        audio.pause();
+
+        if (
+          loadedAudioTrackIdRef.current !== targetTrack.id ||
+          loadedAudioSrcRef.current !== cachedPreview ||
+          !audio.getAttribute('src')
+        ) {
+          audio.src = cachedPreview;
+          loadedAudioTrackIdRef.current = targetTrack.id;
+          loadedAudioSrcRef.current = cachedPreview;
+          setLoadedTrackId(targetTrack.id);
+          setAudioProgress(0);
+        }
+
+        void audio.play().catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return;
+          }
+          if (playingTrackIdRef.current === targetTrack.id) {
+            isAudioLoadingRef.current = false;
+            setPlayingTrackId(null);
+            setIsAudioLoading(false);
+          }
+        });
+        return;
+      }
+
+      if (cachedPreview === null) {
+        isAudioLoadingRef.current = false;
+        setPlayingTrackId(null);
+        setIsAudioLoading(false);
+        return;
+      }
+
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      loadedAudioSrcRef.current = null;
+      loadedAudioTrackIdRef.current = null;
+      setLoadedTrackId(null);
+      setAudioProgress(0);
+      isAudioLoadingRef.current = true;
+      setPlayingTrackId(targetTrack.id);
+      setIsAudioLoading(true);
+
+      const controller = new AbortController();
+      previewFetchAbortRef.current = controller;
+
+      const source =
+        targetTrack.source ?? (targetTrack.id.startsWith('dz-') ? 'deezer' : 'spotify');
+      const params = new URLSearchParams();
+      params.set('id', targetTrack.id);
+      params.set('source', source);
+      if (typeof cachedIsrc === 'string' && cachedIsrc) {
+        params.set('isrc', cachedIsrc);
+      }
+      const fallbackQuery = `${targetTrack.name} ${targetTrack.primaryArtist}`.trim();
+      if (fallbackQuery) {
+        params.set('q', fallbackQuery);
+      }
+
+      void fetch(`/api/isrc?${params.toString()}`, { signal: controller.signal })
+        .then((res) =>
+          res.ok
+            ? (res.json() as Promise<{ isrc?: string | null; previewUrl?: string | null }>)
+            : { isrc: null, previewUrl: null }
+        )
+        .then((data) => {
+          if (controller.signal.aborted || playingTrackIdRef.current !== targetTrack.id) {
+            return;
+          }
+          const resolvedIsrc =
+            typeof data.isrc === 'string' && data.isrc.trim()
+              ? data.isrc.trim().toUpperCase()
+              : null;
+          const resolvedPreviewUrl =
+            typeof data.previewUrl === 'string' && /^https?:\/\//i.test(data.previewUrl.trim())
+              ? data.previewUrl.trim()
+              : null;
+
+          setCachedTrackPreview(previewKey, resolvedPreviewUrl);
+          if (resolvedIsrc) {
+            setCachedTrackPreview(
+              getTrackPreviewCacheKey({ id: targetTrack.id, isrc: resolvedIsrc }),
+              resolvedPreviewUrl
+            );
+          }
+
+          if (!targetTrack.isrc && resolvedIsrc) {
+            setCachedTrackIsrc(targetTrack.id, resolvedIsrc);
+            const patchTrack = (item: TrackItem) =>
+              item.id === targetTrack.id ? { ...item, isrc: resolvedIsrc } : item;
+            setResults((prev) => prev.map(patchTrack));
+            setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
+            setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+          }
+
+          if (activeInspectTrack?.id === targetTrack.id) {
+            setActivePreview({
+              key: getTrackPreviewCacheKey({
+                id: targetTrack.id,
+                isrc: resolvedIsrc ?? (typeof cachedIsrc === 'string' ? cachedIsrc : targetTrack.isrc),
+              }),
+              url: resolvedPreviewUrl,
+            });
+          }
+
+          if (!resolvedPreviewUrl) {
+            isAudioLoadingRef.current = false;
+            setPlayingTrackId(null);
+            setIsAudioLoading(false);
+            setAudioProgress(0);
+            return;
+          }
+
+          audio.src = resolvedPreviewUrl;
+          loadedAudioTrackIdRef.current = targetTrack.id;
+          loadedAudioSrcRef.current = resolvedPreviewUrl;
+          setLoadedTrackId(targetTrack.id);
+
+          void audio.play().catch((err) => {
+            if (err instanceof DOMException && err.name === 'AbortError') {
+              return;
+            }
+            if (playingTrackIdRef.current === targetTrack.id) {
+              isAudioLoadingRef.current = false;
+              setPlayingTrackId(null);
+              setIsAudioLoading(false);
+            }
+          });
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            return;
+          }
+          if (playingTrackIdRef.current === targetTrack.id) {
+            isAudioLoadingRef.current = false;
+            setPlayingTrackId(null);
+            setIsAudioLoading(false);
+          }
+        });
+    },
+    [activeInspectTrack?.id, getOrCreateAudio]
+  );
+
+  const handleToggleInspectorPreview = useCallback(() => {
+    if (!activeInspectTrack) return;
+    handleToggleTrackPreview(activeInspectTrack);
+  }, [activeInspectTrack, handleToggleTrackPreview]);
 
   const fetchIsrcOnDemand = useCallback((targetTrack: TrackItem) => {
     const previewKey = getTrackPreviewCacheKey(targetTrack);
@@ -1440,17 +1609,24 @@ function TrackCodeWorkspace() {
                           </span>
                         </div>
                         <div className="touch-pan-y space-y-2">
-                          {results.map((track, index) => (
-                            <TrackRow
-                              key={track.id}
-                              track={track}
-                              index={index}
-                              isSelected={
-                                (isDesktop ? activeDesktopTrack?.id : sheetTrack?.id) === track.id
-                              }
-                              onSelect={handleSelectTrack}
-                            />
-                          ))}
+                          {results.map((track, index) => {
+                            const isThisActive = playingTrackId === track.id;
+                            return (
+                              <TrackRow
+                                key={track.id}
+                                track={track}
+                                index={index}
+                                isSelected={
+                                  (isDesktop ? activeDesktopTrack?.id : sheetTrack?.id) === track.id
+                                }
+                                isPreviewPlaying={isThisActive && !isAudioLoading}
+                                isPreviewLoading={isThisActive && isAudioLoading}
+                                previewProgress={isThisActive ? audioProgress : 0}
+                                onTogglePreview={handleToggleTrackPreview}
+                                onSelect={handleSelectTrack}
+                              />
+                            );
+                          })}
                         </div>
                       </section>
                     )}
@@ -1485,6 +1661,10 @@ function TrackCodeWorkspace() {
                         ariaLabel="Recent copied tracks"
                         tracks={recentTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
+                        playingTrackId={playingTrackId}
+                        isAudioLoading={isAudioLoading}
+                        audioProgress={audioProgress}
+                        onTogglePreview={handleToggleTrackPreview}
                         onSelect={handleSelectTrack}
                         onClear={handleClearRecent}
                       />
@@ -1523,9 +1703,13 @@ function TrackCodeWorkspace() {
                         ariaLabel="Popular Hits"
                         tracks={displayedQuickTryTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
+                        playingTrackId={playingTrackId}
+                        isAudioLoading={isAudioLoading}
+                        audioProgress={audioProgress}
                         showRanks={true}
                         isLoading={isQuickTryLoading}
                         skeletonCount={5}
+                        onTogglePreview={handleToggleTrackPreview}
                         onSelect={handleSelectTrack}
                       />
                     )}
@@ -1550,10 +1734,27 @@ function TrackCodeWorkspace() {
                   fetchingIsrcTrackId === activeDesktopTrack?.id
                 }
                 previewUrl={isDesktop ? activePreviewUrl : null}
-                isAudioPlaying={isDesktop && isAudioPlaying}
-                isAudioLoading={isDesktop && isAudioLoading}
-                audioProgress={isDesktop ? audioProgress : 0}
-                onTogglePreview={handleTogglePreview}
+                isAudioPlaying={
+                  isDesktop &&
+                  Boolean(activeDesktopTrack?.id) &&
+                  playingTrackId === activeDesktopTrack?.id &&
+                  !isAudioLoading
+                }
+                isAudioLoading={
+                  isDesktop &&
+                  Boolean(activeDesktopTrack?.id) &&
+                  playingTrackId === activeDesktopTrack?.id &&
+                  isAudioLoading
+                }
+                audioProgress={
+                  isDesktop &&
+                  activeDesktopTrack?.id &&
+                  (playingTrackId === activeDesktopTrack.id ||
+                    loadedTrackId === activeDesktopTrack.id)
+                    ? audioProgress
+                    : 0
+                }
+                onTogglePreview={handleToggleInspectorPreview}
                 onCopied={handleInspectorCopied}
                 onCopyFailed={handleInspectorCopyFailed}
                 onSearchOtherVersions={handleSearchOtherVersions}
@@ -1584,10 +1785,26 @@ function TrackCodeWorkspace() {
               Boolean(sheetTrack?.id) && fetchingIsrcTrackId === sheetTrack?.id
             }
             previewUrl={!isDesktop && sheetTrack ? activePreviewUrl : null}
-            isAudioPlaying={!isDesktop && isAudioPlaying}
-            isAudioLoading={!isDesktop && isAudioLoading}
-            audioProgress={!isDesktop ? audioProgress : 0}
-            onTogglePreview={handleTogglePreview}
+            isAudioPlaying={
+              !isDesktop &&
+              Boolean(sheetTrack?.id) &&
+              playingTrackId === sheetTrack?.id &&
+              !isAudioLoading
+            }
+            isAudioLoading={
+              !isDesktop &&
+              Boolean(sheetTrack?.id) &&
+              playingTrackId === sheetTrack?.id &&
+              isAudioLoading
+            }
+            audioProgress={
+              !isDesktop &&
+              sheetTrack?.id &&
+              (playingTrackId === sheetTrack.id || loadedTrackId === sheetTrack.id)
+                ? audioProgress
+                : 0
+            }
+            onTogglePreview={handleToggleInspectorPreview}
             onClose={handleCloseSheet}
             onCopied={handleInspectorCopied}
             onCopyFailed={handleInspectorCopyFailed}
