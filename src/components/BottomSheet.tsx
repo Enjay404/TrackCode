@@ -405,6 +405,36 @@ export function BottomSheet({
                     </>
                   )}
                 </motion.button>
+
+                <AnimatePresence initial={false}>
+                  {copiedState && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, y: -4 }}
+                      animate={{ opacity: 1, height: 'auto', y: 0 }}
+                      exit={{ opacity: 0, height: 0, y: -4 }}
+                      transition={{ duration: 0.24, ease: IOS_EASE }}
+                      className="overflow-hidden"
+                    >
+                      <div className="flex justify-center pt-0.5">
+                        <a
+                          href="https://ko-fi.com/enjay404"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          className="group inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[13px] font-normal text-[#8E8E93] transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                        >
+                          <span>Posted your Story? Buy me a Ko-fi</span>
+                          <span
+                            aria-hidden="true"
+                            className="text-[#FF9F0A] drop-shadow-[0_0_6px_rgba(255,159,10,0.38)] transition-all duration-150 group-hover:text-[#30D158] group-hover:drop-shadow-[0_0_8px_rgba(48,209,88,0.5)]"
+                          >
+                            ☕
+                          </span>
+                        </a>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ) : (
               <div className="mt-5 space-y-3">
