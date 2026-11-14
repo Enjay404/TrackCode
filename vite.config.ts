@@ -21,8 +21,8 @@ export default defineConfig(() => {
         ],
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['assets/aistudio/**', 'og-image.png'],
-          navigateFallbackDenylist: [/^\/api\//],
+          globIgnores: ['assets/aistudio/**', 'og-image.png', 'og-image.jpg'],
+          navigateFallbackDenylist: [/^\/api\//, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/og-image\.jpg$/],
           runtimeCaching: [
             {
               urlPattern: /\/api\/quick-try$/,

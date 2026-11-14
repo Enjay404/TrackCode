@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /maintenance
+Disallow: /api/
+
+Sitemap: https://trackcode.online/sitemap.xml

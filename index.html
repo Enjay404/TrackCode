@@ -7,32 +7,45 @@
     <link rel="preconnect" href="https://image-cdn-ak.spotifycdn.com" crossorigin />
     <link rel="preconnect" href="https://i.scdn.co" crossorigin />
     <link rel="preconnect" href="https://cdn-images.dzcdn.net" crossorigin />
-    <title>TrackCode — ISRC Finder</title>
+
+    <title>TrackCode — Instagram ISRC Finder | Find Any Song's ISRC Code</title>
     <meta
       name="description"
-      content="Instant Spotify ISRC lookup for Instagram Stories & Notes. Built by @enjay404."
+      content="For when Instagram refuses to show the song you want. Made with ❤️ by enjay404 — search any track or paste a Spotify link to copy its Instagram ISRC code in one tap."
     />
+    <meta
+      name="keywords"
+      content="ISRC finder, Instagram music ISRC, song not showing on Instagram music, Spotify to ISRC, Instagram hidden song code, TrackCode, enjay404"
+    />
+    <link rel="canonical" href="https://trackcode.online/" />
+    <meta name="theme-color" content="#09090B" />
+
+    <!-- Open Graph (WhatsApp, Instagram, Facebook, LinkedIn, Discord) -->
+    <meta property="og:type" content="website" />
     <meta property="og:site_name" content="TrackCode" />
-    <meta property="og:title" content="TrackCode — ISRC Finder" />
+    <meta property="og:url" content="https://trackcode.online/" />
+    <meta property="og:title" content="TrackCode — Instagram ISRC Finder" />
     <meta
       property="og:description"
-      content="Instant Spotify ISRC lookup for Instagram Stories & Notes. Built by @enjay404."
+      content="For when Instagram refuses to show the song you want. Made with ❤️ by enjay404"
     />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og-image.png" />
-    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image" content="https://trackcode.online/og-image.jpg" />
+    <meta property="og:image:secure_url" content="https://trackcode.online/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="670" />
-    <meta property="og:image:alt" content="TrackCode — Instant Spotify ISRC Lookup" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="TrackCode — ISRC Finder (trackcode.online)" />
+
+    <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="TrackCode — ISRC Finder" />
+    <meta name="twitter:title" content="TrackCode — Instagram ISRC Finder" />
     <meta
       name="twitter:description"
-      content="Instant Spotify ISRC lookup for Instagram Stories & Notes. Built by @enjay404."
+      content="For when Instagram refuses to show the song you want. Made with ❤️ by enjay404"
     />
-    <meta name="twitter:image" content="/og-image.png" />
-    <meta name="twitter:image:alt" content="TrackCode — Instant Spotify ISRC Lookup" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="twitter:image" content="https://trackcode.online/og-image.jpg" />
+    <meta name="twitter:image:alt" content="TrackCode — ISRC Finder (trackcode.online)" />
+
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -41,20 +54,52 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon.ico" />
+
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "TrackCode",
-        "applicationCategory": "MultimediaApplication",
-        "operatingSystem": "All",
-        "description": "Instant Spotify ISRC lookup for Instagram Stories & Notes. Built by @enjay404.",
-        "image": "/og-image.png",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        }
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "name": "TrackCode",
+            "url": "https://trackcode.online",
+            "description": "For when Instagram refuses to show the song you want. Made with ❤️ by enjay404",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Any",
+            "image": "https://trackcode.online/og-image.jpg",
+            "author": {
+              "@type": "Person",
+              "name": "enjay404",
+              "url": "https://instagram.com/enjay404"
+            },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "How do I find a song that doesn't show up on Instagram Music?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Search for the song or artist on TrackCode (trackcode.online), tap the track to copy its formatted ISRC:XXXXXXXXXXXX code, then open Instagram's Music sticker on a Story, Reel, or Note and paste the ISRC code directly into the search bar."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I find a song's ISRC code from a Spotify link?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Copy the Spotify track link (or spotify.link short URL), tap Paste in TrackCode's search bar, and TrackCode immediately resolves and copies the exact ISRC code ready for Instagram Music."
+                }
+              }
+            ]
+          }
+        ]
       }
     </script>
   </head>
