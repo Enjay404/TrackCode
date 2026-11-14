@@ -115,12 +115,10 @@ const FooterDock = memo(function FooterDock() {
           transition={SPRING_BUTTON}
           className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
-            background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+            background:
+              'linear-gradient(180deg, rgba(36, 36, 40, 0.92) 0%, rgba(22, 22, 24, 0.95) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.14)',
+            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.45)',
           }}
         >
           <span>Made with ❤️ by</span>
@@ -135,20 +133,13 @@ const FooterDock = memo(function FooterDock() {
           transition={SPRING_BUTTON}
           className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
-            background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+            background:
+              'linear-gradient(180deg, rgba(36, 36, 40, 0.92) 0%, rgba(22, 22, 24, 0.95) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.14)',
+            boxShadow: '0 8px 20px rgba(0, 0, 0, 0.45)',
           }}
         >
-          <span
-            aria-hidden="true"
-            className="drop-shadow-[0_0_6px_rgba(255,159,10,0.35)] transition-all duration-150 group-hover:drop-shadow-[0_0_8px_rgba(48,209,88,0.5)]"
-          >
-            ☕
-          </span>
+          <span aria-hidden="true">☕</span>
           <span>Support</span>
         </motion.a>
       </div>
@@ -178,6 +169,7 @@ export default function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
+  const openSheetRafRef = useRef<number | null>(null);
   const isOnline = useOnlineStatus();
 
   const trimmedQuery = query.trim();
@@ -238,8 +230,54 @@ export default function App() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (openSheetRafRef.current) {
+        window.cancelAnimationFrame(openSheetRafRef.current);
+      }
     };
   }, []);
+
+  const openTrackSheetSafely = useCallback(
+    (track: TrackItem, copiedSync: boolean, showNoIsrcToast = false) => {
+      if (openSheetRafRef.current) {
+        window.cancelAnimationFrame(openSheetRafRef.current);
+        openSheetRafRef.current = null;
+      }
+
+      const commitOpen = () => {
+        setSelectedTrack(track);
+        if (track.isrc) {
+          setRecentTracks(saveRecentTrack(track));
+          if (copiedSync) {
+            setAutoCopiedSignal((s) => s + 1);
+            showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
+          }
+        } else {
+          setAutoCopiedSignal(0);
+          if (showNoIsrcToast) {
+            showToast('No ISRC found for this upload', 'info');
+          }
+        }
+      };
+
+      const activeEl = document.activeElement;
+      const isInputFocused =
+        activeEl instanceof HTMLElement &&
+        (activeEl === inputRef.current || activeEl.tagName === 'INPUT');
+
+      if (isInputFocused) {
+        activeEl.blur();
+        inputRef.current?.blur();
+        openSheetRafRef.current = window.requestAnimationFrame(() => {
+          openSheetRafRef.current = null;
+          commitOpen();
+        });
+        return;
+      }
+
+      commitOpen();
+    },
+    [showToast]
+  );
 
   const executeLookup = useCallback(
     async (rawInput: string, mode: 'link' | 'search') => {
@@ -265,18 +303,9 @@ export default function App() {
           const track = payload.track;
           setResults([track]);
           setHasSearched(true);
-          setSelectedTrack(track);
 
-          if (track.isrc) {
-            const copied = syncCopyIsrc(track.isrc);
-            setRecentTracks(saveRecentTrack(track));
-            if (copied) {
-              setAutoCopiedSignal((s) => s + 1);
-              showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
-            }
-          } else {
-            showToast('No ISRC found for this upload', 'info');
-          }
+          const copied = track.isrc ? syncCopyIsrc(track.isrc) : false;
+          openTrackSheetSafely(track, copied, !track.isrc);
         } else {
           const res = await fetch(`/api/search?q=${encodeURIComponent(rawInput)}`, {
             signal: controller.signal,
@@ -309,7 +338,7 @@ export default function App() {
         }
       }
     },
-    [showToast]
+    [openTrackSheetSafely]
   );
 
   useEffect(() => {
@@ -357,18 +386,9 @@ export default function App() {
 
   const handleSelectTrack = useCallback(
     (track: TrackItem, copiedSync: boolean) => {
-      setSelectedTrack(track);
-      if (track.isrc) {
-        setRecentTracks(saveRecentTrack(track));
-        if (copiedSync) {
-          setAutoCopiedSignal((s) => s + 1);
-          showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
-        }
-      } else {
-        setAutoCopiedSignal(0);
-      }
+      openTrackSheetSafely(track, copiedSync, false);
     },
-    [showToast]
+    [openTrackSheetSafely]
   );
 
   const handlePasteFromClipboard = useCallback(async () => {
@@ -517,7 +537,7 @@ export default function App() {
             opacity: isSheetOpen ? 0.68 : 1,
           }}
           transition={{
-            duration: 0.28,
+            duration: 0.26,
             ease: IOS_CUBIC,
           }}
           className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
@@ -525,10 +545,9 @@ export default function App() {
             overflow: 'clip',
             paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
             transformOrigin: 'center top',
-            willChange: 'transform, opacity',
           }}
         >
-          {/* Breathing Ambient Background Glow behind top ~35% so Liquid Glass surfaces refract shifting light */}
+          {/* Breathing Ambient Background Glow (pure radial-gradient, zero filter: blur) */}
           <motion.div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[42vh]"
@@ -543,7 +562,6 @@ export default function App() {
             }}
             style={{
               transformOrigin: '50% 18%',
-              willChange: 'transform, opacity',
               background:
                 'radial-gradient(68% 72% at 22% 14%, rgba(48, 209, 88, 0.11) 0%, transparent 72%), radial-gradient(75% 78% at 78% 18%, rgba(58, 75, 115, 0.14) 0%, transparent 75%)',
             }}
@@ -616,7 +634,7 @@ export default function App() {
                 {isLinkMode ? (
                   <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
                 ) : (
-                  <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
+                  <Search className="h-[19px] w-[19px] text-white/90" />
                 )}
               </span>
 

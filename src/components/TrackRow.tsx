@@ -49,7 +49,6 @@ export const TrackRow = memo(function TrackRow({ track, index, onSelect }: Track
         transition: { type: 'spring', stiffness: 500, damping: 30, delay: 0 },
       }}
       className="group flex min-h-[70px] w-full items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-colors duration-100 last:border-b-0 hover:bg-white/[0.04] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none"
-      style={{ willChange: 'transform, opacity' }}
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
         {(track.albumArt.medium || track.albumArt.large) && !imgError ? (
