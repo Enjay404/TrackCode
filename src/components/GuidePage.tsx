@@ -1,7 +1,9 @@
 import { toPng } from 'html-to-image';
 import {
   ArrowDown,
+  ArrowRight,
   ArrowLeft,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronRight,
@@ -18,8 +20,11 @@ import {
   Lock,
   Maximize2,
   Music2,
+  Pause,
   Play,
+  PlusSquare,
   Search,
+  Share,
   Smartphone,
   Sparkles,
   X,
@@ -47,6 +52,8 @@ const SARAGAYE_ARTWORK =
   'https://cdn-images.dzcdn.net/images/cover/fe6c49a84905c1f61d1335bc9372462c/250x250-000000-80-0-0.jpg';
 const DIE_WITH_A_SMILE_ARTWORK =
   'https://cdn-images.dzcdn.net/images/cover/4bd5903f4ce8f2601916bfadb44efe8a/250x250-000000-80-0-0.jpg';
+const MANIKE_ARTWORK =
+  'https://cdn-images.dzcdn.net/images/cover/ef08fcc90370cfff19c050806da21dab/250x250-000000-80-0-0.jpg';
 
 const ABOUT_YOU_ISRC = 'ISRC:GBK3W2202321';
 
@@ -92,7 +99,7 @@ const GUIDE_HOWTO_SCHEMA = {
   ],
 };
 
-type GuideTab = 'guide' | 'promo';
+type GuideTab = 'guide' | 'promo' | 'posts';
 
 interface GuidePageProps {
   onNavigate?: (path: string) => void;
@@ -193,7 +200,7 @@ const StorySlideCard = memo(function StorySlideCard({
   subtext,
   subtextItalic = false,
   glowStyle,
-  paddingClass = 'py-12',
+  paddingClass = 'py-7',
   customHeader,
   customLayout,
   bottomSlot,
@@ -204,7 +211,7 @@ const StorySlideCard = memo(function StorySlideCard({
     <article
       ref={cardRef}
       id={id}
-      className={`relative flex h-[640px] w-[360px] shrink-0 flex-col justify-between overflow-hidden rounded-[32px] border border-white/[0.12] bg-[#09090B] px-6 shadow-[0_24px_60px_rgba(0,0,0,0.85)] ${paddingClass}`}
+      className={`relative flex aspect-[4/5] h-[450px] w-[360px] shrink-0 flex-col justify-between overflow-hidden rounded-[32px] border border-white/[0.12] bg-[#09090B] px-6 shadow-[0_24px_60px_rgba(0,0,0,0.85)] ${paddingClass}`}
     >
       {/* Top ambient radial glow */}
       <div
@@ -216,7 +223,7 @@ const StorySlideCard = memo(function StorySlideCard({
       {/* Subtle top specular rim */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.07),transparent_70%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.07),transparent_70%)]"
       />
 
       {customLayout ? (
@@ -227,18 +234,18 @@ const StorySlideCard = memo(function StorySlideCard({
           <div className="relative z-10">
             {customHeader ?? (
               <>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/85">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/85">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#30D158]" aria-hidden="true" />
                   <span className="inline-flex items-center gap-1.5">{badge}</span>
                 </span>
 
-                <h2 className="mt-3 text-[22px] font-bold leading-[1.14] tracking-[-0.03em] text-white">
+                <h2 className="mt-2.5 text-[20px] font-bold leading-[1.14] tracking-[-0.03em] text-white">
                   {headline}
                 </h2>
 
                 {subtext && (
                   <p
-                    className={`mt-1.5 text-[13px] leading-[1.45] text-[#98989D] ${
+                    className={`mt-1 text-[12px] leading-[1.4] text-[#98989D] ${
                       subtextItalic ? 'italic text-[#AEAEB2]' : ''
                     }`}
                   >
@@ -250,12 +257,12 @@ const StorySlideCard = memo(function StorySlideCard({
           </div>
 
           {/* Center UI Mockup */}
-          <div className="relative z-10 my-auto py-2">{children}</div>
+          <div className="relative z-10 my-auto py-1">{children}</div>
 
           {/* Bottom Safe-Zone Watermark */}
           <div className="relative z-10 flex justify-center">
             {bottomSlot ?? (
-              <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium tracking-[0.01em] text-white/90">
+              <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11.5px] font-medium tracking-[0.01em] text-white/90">
                 <span
                   className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.8)]"
                   aria-hidden="true"
@@ -271,55 +278,55 @@ const StorySlideCard = memo(function StorySlideCard({
 });
 
 /* ============================================================================
- * TAB 1: STEP-BY-STEP GUIDE SLIDES (About You — The 1975)
+ * TAB 1: STEP GUIDE SLIDES (4:5 360x450 -> 1080x1350)
  * ========================================================================== */
 
 const SlideOneContent = memo(function SlideOneContent() {
   return (
     <div className="flex flex-col items-center">
       {/* Dark-mode Instagram Music Sticker Mockup */}
-      <div className="w-full rounded-[22px] border border-white/[0.11] bg-gradient-to-b from-[#1E1E22] to-[#131316] p-3.5 shadow-[0_14px_34px_rgba(0,0,0,0.65)]">
-        <div className="mb-2.5 flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
-            <Music2 className="h-3.5 w-3.5 text-white/70" />
+      <div className="w-full rounded-[20px] border border-white/[0.11] bg-gradient-to-b from-[#1E1E22] to-[#131316] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.65)]">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
+            <Music2 className="h-3 w-3 text-white/70" />
             <span>Instagram Music</span>
           </span>
-          <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium text-[#8E8E93]">
+          <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[9.5px] font-medium text-[#8E8E93]">
             Search
           </span>
         </div>
 
-        <div className="flex items-center gap-2 rounded-xl border border-white/[0.1] bg-[#2C2C2E] px-3 py-2">
+        <div className="flex items-center gap-2 rounded-xl border border-white/[0.1] bg-[#2C2C2E] px-2.5 py-1.5">
           <Search className="h-3.5 w-3.5 shrink-0 text-[#8E8E93]" />
-          <span className="truncate text-[13.5px] font-medium text-white">
+          <span className="truncate text-[13px] font-medium text-white">
             About You The 1975
           </span>
         </div>
 
-        <div className="mt-3 flex flex-col items-center justify-center rounded-2xl border border-white/[0.06] bg-black/40 px-3 py-4 text-center">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-[#8E8E93]">
+        <div className="mt-2.5 flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-black/40 px-3 py-3 text-center">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-[#8E8E93]">
             <Search className="h-3.5 w-3.5 opacity-75" />
           </div>
-          <p className="mt-2 text-[13.5px] font-semibold text-white/80">
+          <p className="mt-1.5 text-[13px] font-semibold text-white/80">
             No results found
           </p>
-          <p className="mt-0.5 text-[11px] text-[#6E6E73]">
+          <p className="text-[10.5px] text-[#6E6E73]">
             Hidden on Instagram Music search
           </p>
         </div>
       </div>
 
       {/* Glowing Liquid Glass Transition Arrow */}
-      <div className="my-3 flex flex-col items-center">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#30D158]/40 bg-gradient-to-b from-[#232327] to-[#141417] text-[#30D158] shadow-[0_0_24px_rgba(48,209,88,0.28),inset_0_1px_0_rgba(255,255,255,0.2)]">
-          <ArrowDown className="h-4 w-4 stroke-[2.4]" />
+      <div className="my-2 flex flex-col items-center">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#30D158]/40 bg-gradient-to-b from-[#232327] to-[#141417] text-[#30D158] shadow-[0_0_20px_rgba(48,209,88,0.28),inset_0_1px_0_rgba(255,255,255,0.2)]">
+          <ArrowDown className="h-3.5 w-3.5 stroke-[2.4]" />
         </div>
       </div>
 
       {/* TrackCode Solution Pill */}
-      <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl border-[#30D158]/30 px-4 py-2">
+      <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl border-[#30D158]/30 px-3.5 py-1.5">
         <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
-        <span className="text-[12.5px] font-semibold text-white">
+        <span className="text-[12px] font-semibold text-white">
           Unlock it with <span className="text-[#30D158]">trackcode.online</span>
         </span>
       </div>
@@ -329,20 +336,20 @@ const SlideOneContent = memo(function SlideOneContent() {
 
 const SlideTwoContent = memo(function SlideTwoContent() {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {/* TrackCode Spotlight Dark-Glass Search Bar */}
-      <div className="liquid-glass-search flex min-h-[48px] items-center rounded-[16px] px-3.5 py-2">
-        <Search className="h-[16px] w-[16px] shrink-0 text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
-        <span className="ml-2.5 flex-1 truncate text-[14px] font-medium text-white">
+      <div className="liquid-glass-search flex min-h-[44px] items-center rounded-[15px] px-3 py-2">
+        <Search className="h-4 w-4 shrink-0 text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
+        <span className="ml-2.5 flex-1 truncate text-[13.5px] font-medium text-white">
           About You — The 1975
         </span>
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-black">
-          <X className="h-3 w-3 stroke-[2.5]" />
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/20 text-black">
+          <X className="h-2.5 w-2.5 stroke-[2.6]" />
         </span>
       </div>
 
       {/* TrackCode Liquid Glass Track Capsule */}
-      <div className="relative flex min-h-[72px] w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.16] border-t-white/[0.24] bg-gradient-to-b from-[#232327] to-[#151518] px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_14px_30px_rgba(0,0,0,0.6)]">
+      <div className="relative flex min-h-[68px] w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.16] border-t-white/[0.24] bg-gradient-to-b from-[#232327] to-[#151518] px-3.5 py-2.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_14px_30px_rgba(0,0,0,0.6)]">
         {/* Specular top catch */}
         <span
           aria-hidden="true"
@@ -359,32 +366,32 @@ const SlideTwoContent = memo(function SlideTwoContent() {
           }}
         />
 
-        <CoverArtwork sizeClass="h-12 w-12" roundedClass="rounded-[10px]">
+        <CoverArtwork sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44}>
           <span
             aria-hidden="true"
             className="absolute inset-0 flex items-center justify-center"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/40 bg-white/22 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white/40 bg-white/22 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
               <Play className="ml-[1px] h-2.5 w-2.5 fill-white text-white" />
             </span>
           </span>
         </CoverArtwork>
 
         <div className="relative z-10 min-w-0 flex-1">
-          <div className="truncate text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-white">
+          <div className="truncate text-[14px] font-semibold leading-snug tracking-[-0.01em] text-white">
             About You
           </div>
-          <p className="mt-0.5 truncate text-[12.5px] leading-snug text-[#8E8E93]">
+          <p className="mt-0.5 truncate text-[12px] leading-snug text-[#8E8E93]">
             The 1975
           </p>
-          <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="mt-1 flex items-center gap-1.5">
             <span
-              className="inline-flex h-[17px] items-center rounded-[4px] px-1.5 text-[9.5px] font-semibold leading-none tracking-[0.04em]"
+              className="inline-flex h-[16px] items-center rounded-[4px] px-1.5 text-[9px] font-semibold leading-none tracking-[0.04em]"
               style={ALBUM_TYPE_BADGE_STYLE.album}
             >
               {ALBUM_TYPE_LABEL.album}
             </span>
-            <span className="text-[11px] font-medium tabular-nums text-[#8E8E93]">
+            <span className="text-[10.5px] font-medium tabular-nums text-[#8E8E93]">
               2022
             </span>
           </div>
@@ -393,7 +400,7 @@ const SlideTwoContent = memo(function SlideTwoContent() {
         <ChevronRight className="relative z-10 h-4 w-4 shrink-0 text-white/80" />
       </div>
 
-      <p className="pt-1 text-center text-[11px] font-medium text-[#8E8E93]">
+      <p className="pt-0.5 text-center text-[11px] font-medium text-[#8E8E93]">
         Tap any track to grab its exact studio ISRC
       </p>
     </div>
@@ -402,17 +409,17 @@ const SlideTwoContent = memo(function SlideTwoContent() {
 
 const SlideThreeContent = memo(function SlideThreeContent() {
   return (
-    <div className="relative overflow-hidden rounded-[26px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.75)]">
+    <div className="relative overflow-hidden rounded-[24px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] p-3.5 shadow-[0_20px_48px_rgba(0,0,0,0.75)]">
       {/* Top specular highlight */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_70%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_70%)]"
       />
 
       {/* Ambient tinted artwork glow */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full opacity-25"
+        className="pointer-events-none absolute -top-14 left-1/2 h-36 w-36 -translate-x-1/2 rounded-full opacity-25"
         style={{
           background:
             'radial-gradient(circle, rgba(160, 175, 200, 0.8) 0%, rgba(48, 209, 88, 0.25) 48%, transparent 72%)',
@@ -422,27 +429,27 @@ const SlideThreeContent = memo(function SlideThreeContent() {
       {/* Track Header */}
       <div className="relative flex items-center gap-3">
         <CoverArtwork
-          sizeClass="h-14 w-14 shadow-[0_8px_20px_rgba(0,0,0,0.5)]"
-          roundedClass="rounded-2xl"
-          sizePx={56}
+          sizeClass="h-12 w-12 shadow-[0_8px_20px_rgba(0,0,0,0.5)]"
+          roundedClass="rounded-xl"
+          sizePx={48}
         />
 
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold leading-tight tracking-[-0.02em] text-white">
+          <div className="truncate text-[15px] font-semibold leading-tight tracking-[-0.02em] text-white">
             About You
           </div>
-          <p className="mt-1 inline-flex max-w-full items-center gap-1.5 text-[13px] text-[#AEAEB2]">
+          <p className="mt-0.5 inline-flex max-w-full items-center gap-1.5 text-[12.5px] text-[#AEAEB2]">
             <span className="truncate">The 1975</span>
             <VerifiedBadge />
           </p>
-          <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="mt-1 flex items-center gap-1.5">
             <span
-              className="inline-flex h-[16px] items-center rounded-[4px] px-1.5 text-[9px] font-semibold leading-none tracking-[0.04em]"
+              className="inline-flex h-[15px] items-center rounded-[4px] px-1.5 text-[8.5px] font-semibold leading-none tracking-[0.04em]"
               style={ALBUM_TYPE_BADGE_STYLE.album}
             >
               {ALBUM_TYPE_LABEL.album}
             </span>
-            <span className="text-[11px] font-medium tabular-nums text-[#8E8E93]">
+            <span className="text-[10.5px] font-medium tabular-nums text-[#8E8E93]">
               2022
             </span>
           </div>
@@ -450,22 +457,22 @@ const SlideThreeContent = memo(function SlideThreeContent() {
       </div>
 
       {/* Inset Instagram Search Code Box */}
-      <div className="relative mt-3.5 flex items-center justify-between gap-2.5 rounded-[14px] border border-[#30D158]/40 bg-[#2C2C2E] px-3.5 py-2.5 shadow-[0_0_18px_rgba(48,209,88,0.12)]">
+      <div className="relative mt-3 flex items-center justify-between gap-2 rounded-[13px] border border-[#30D158]/40 bg-[#2C2C2E] px-3 py-2 shadow-[0_0_18px_rgba(48,209,88,0.12)]">
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-medium tracking-wide text-[#8E8E93]">
+          <div className="text-[9.5px] font-medium tracking-wide text-[#8E8E93]">
             Instagram Search Code
           </div>
-          <div className="font-mono-isrc mt-0.5 truncate text-[15px] font-semibold tracking-[0.02em] text-white">
+          <div className="font-mono-isrc mt-0.5 truncate text-[14.5px] font-semibold tracking-[0.02em] text-white">
             {ABOUT_YOU_ISRC}
           </div>
         </div>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#30D158]">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#30D158]">
           <Copy className="h-3.5 w-3.5" />
         </span>
       </div>
 
       {/* Solid Green Copied Confirmation Pill */}
-      <div className="relative mt-2.5 flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-[14px] bg-[#30D158] px-4 text-[14px] font-semibold tracking-[-0.01em] text-black shadow-[0_8px_20px_rgba(48,209,88,0.28)]">
+      <div className="relative mt-2 flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-[12px] bg-[#30D158] px-4 text-[13.5px] font-semibold tracking-[-0.01em] text-black shadow-[0_8px_20px_rgba(48,209,88,0.28)]">
         <Check className="h-4 w-4 stroke-[2.8]" />
         <span>Copied</span>
       </div>
@@ -475,13 +482,13 @@ const SlideThreeContent = memo(function SlideThreeContent() {
 
 const SlideFourContent = memo(function SlideFourContent() {
   return (
-    <div className="w-full rounded-[22px] border border-white/[0.11] bg-gradient-to-b from-[#1E1E22] to-[#131316] p-3.5 shadow-[0_18px_42px_rgba(0,0,0,0.72)]">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
-          <Music2 className="h-3.5 w-3.5 text-white/80" />
+    <div className="w-full rounded-[20px] border border-white/[0.11] bg-gradient-to-b from-[#1E1E22] to-[#131316] p-3.5 shadow-[0_18px_42px_rgba(0,0,0,0.72)]">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
+          <Music2 className="h-3 w-3 text-white/80" />
           <span>Instagram Music</span>
         </span>
-        <span className="rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10px] font-semibold text-[#30D158]">
+        <span className="rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[9.5px] font-semibold text-[#30D158]">
           Unlocked
         </span>
       </div>
@@ -489,20 +496,20 @@ const SlideFourContent = memo(function SlideFourContent() {
       {/* Instagram Search Input with Pasted ISRC */}
       <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-[#2C2C2E] px-3 py-2">
         <Search className="h-3.5 w-3.5 shrink-0 text-white/80" />
-        <span className="font-mono-isrc truncate text-[13.5px] font-semibold text-white">
+        <span className="font-mono-isrc truncate text-[13px] font-semibold text-white">
           {ABOUT_YOU_ISRC}
         </span>
       </div>
 
       {/* Revealed Unlocked Track Row */}
-      <div className="mt-3 flex items-center gap-2.5 rounded-2xl border border-white/[0.14] bg-white/[0.06] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
-        <CoverArtwork sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44} />
+      <div className="mt-2.5 flex items-center gap-2.5 rounded-2xl border border-white/[0.14] bg-white/[0.06] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+        <CoverArtwork sizeClass="h-10 w-10" roundedClass="rounded-[9px]" sizePx={40} />
 
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-semibold text-white">
+          <div className="truncate text-[13.5px] font-semibold text-white">
             About You
           </div>
-          <div className="mt-0.5 truncate text-[11.5px] text-[#AEAEB2]">
+          <div className="mt-0.5 truncate text-[11px] text-[#AEAEB2]">
             The 1975 · 5:26
           </div>
         </div>
@@ -513,293 +520,6 @@ const SlideFourContent = memo(function SlideFourContent() {
         >
           <Check className="h-3.5 w-3.5 stroke-[2.8]" />
         </span>
-      </div>
-    </div>
-  );
-});
-
-/* ============================================================================
- * TAB 2: PROMO & MOTION SLIDES (Creative GPU-Composited 9:16 Showcase)
- * ========================================================================== */
-
-const PromoOneContent = memo(function PromoOneContent() {
-  return (
-    <div className="relative flex items-center justify-center py-2">
-      {/* Subtle radial glow behind floating tilted card */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-4 top-1/2 h-40 -translate-y-1/2 rounded-full"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(48, 209, 88, 0.2) 0%, rgba(255, 255, 255, 0.05) 45%, transparent 72%)',
-        }}
-      />
-
-      {/* Floating Tilted (-rotate-2) TrackCode ISRC Card */}
-      <div className="animate-promo-float relative w-full overflow-hidden rounded-[24px] border border-white/[0.16] border-t-white/[0.28] bg-gradient-to-b from-[#252529] to-[#141417] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_22px_48px_rgba(0,0,0,0.85)]">
-        {/* Continuous GPU diagonal glass light-sweep */}
-        <span
-          aria-hidden="true"
-          className="animate-promo-sweep pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.08) 48%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.08) 52%, transparent 80%)',
-          }}
-        />
-
-        <div className="relative flex items-center gap-3">
-          <CoverArtwork sizeClass="h-12 w-12" roundedClass="rounded-xl" sizePx={48} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-semibold text-white">
-              About You
-            </div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[12.5px] text-[#AEAEB2]">
-              <span className="truncate">The 1975</span>
-              <VerifiedBadge />
-            </div>
-            <div className="mt-1 flex items-center gap-1.5">
-              <span
-                className="inline-flex h-[16px] items-center rounded-[4px] px-1.5 text-[9px] font-semibold leading-none tracking-[0.04em]"
-                style={ALBUM_TYPE_BADGE_STYLE.album}
-              >
-                {ALBUM_TYPE_LABEL.album}
-              </span>
-              <span className="text-[10.5px] font-medium tabular-nums text-[#8E8E93]">
-                2022
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative mt-3.5 flex items-center justify-between gap-2 rounded-[13px] border border-[#30D158]/35 bg-[#2C2C2E] px-3 py-2">
-          <div className="min-w-0">
-            <div className="text-[9.5px] font-medium tracking-wide text-[#8E8E93]">
-              Instagram Search Code
-            </div>
-            <div className="font-mono-isrc truncate text-[14px] font-semibold tracking-[0.02em] text-white">
-              {ABOUT_YOU_ISRC}
-            </div>
-          </div>
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#30D158] px-2.5 py-1 text-[11px] font-semibold text-black">
-            <Check className="h-3 w-3 stroke-[2.8]" />
-            <span>Copied</span>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const PROMO_EQ_RADIUS = 10.5;
-const PROMO_EQ_CIRCUMFERENCE = 2 * Math.PI * PROMO_EQ_RADIUS;
-
-const PromoTwoContent = memo(function PromoTwoContent() {
-  return (
-    <div className="space-y-2.5">
-      {/* #1 Global Capsule with Live Progress Ring + 3-bar GPU Equalizer */}
-      <div className="relative flex translate-x-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.18] border-t-white/[0.28] bg-gradient-to-b from-[#252529] to-[#161619] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_28px_rgba(0,0,0,0.6)]">
-        <CoverArtwork src={BIRDS_ARTWORK} alt="BIRDS OF A FEATHER artwork" sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44}>
-          <span className="absolute inset-0 flex items-center justify-center">
-            <span className="relative flex h-6 w-6 items-center justify-center rounded-full border border-white/40 bg-black/55">
-              <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r={PROMO_EQ_RADIUS}
-                  fill="none"
-                  stroke="rgba(255,255,255,0.25)"
-                  strokeWidth="1.8"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r={PROMO_EQ_RADIUS}
-                  fill="none"
-                  stroke="#FFFFFF"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeDasharray={PROMO_EQ_CIRCUMFERENCE}
-                  strokeDashoffset={PROMO_EQ_CIRCUMFERENCE * 0.34}
-                />
-              </svg>
-              {/* 3-bar GPU scaleY Equalizer */}
-              <span className="relative flex h-2.5 items-end gap-[2px]" aria-hidden="true">
-                <span className="animate-promo-eq h-full w-[2px] rounded-full bg-white" />
-                <span
-                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
-                  style={{ animationDelay: '180ms' }}
-                />
-                <span
-                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
-                  style={{ animationDelay: '340ms' }}
-                />
-              </span>
-            </span>
-          </span>
-        </CoverArtwork>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
-              #1 GLOBAL
-            </span>
-          </div>
-          <div className="mt-0.5 truncate text-[13.5px] font-semibold text-white">
-            BIRDS OF A FEATHER
-          </div>
-          <div className="truncate text-[11.5px] text-[#8E8E93]">Billie Eilish</div>
-        </div>
-
-        <span className="shrink-0 rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#30D158]">
-          ▲ 2
-        </span>
-      </div>
-
-      {/* #1 Sri Lanka Capsule (staggered right) */}
-      <div className="relative flex translate-x-2 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.12] border-t-white/[0.2] bg-gradient-to-b from-[#1E1E22] to-[#131316] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_24px_rgba(0,0,0,0.5)]">
-        <CoverArtwork src={SARAGAYE_ARTWORK} alt="Saragaye artwork" sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
-              <SriLankaFlag />
-              <span>#1 SRI LANKA</span>
-            </span>
-          </div>
-          <div className="mt-0.5 truncate text-[13.5px] font-semibold text-white">
-            Saragaye
-          </div>
-          <div className="truncate text-[11.5px] text-[#8E8E93]">SANUKA</div>
-        </div>
-
-        <span className="shrink-0 rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-[#30D158]">
-          ▲ 3
-        </span>
-      </div>
-
-      {/* #2 Global Capsule (staggered further) */}
-      <div className="relative flex translate-x-4 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.08] border-t-white/[0.15] bg-gradient-to-b from-[#19191C] to-[#121214] px-3 py-2.5 opacity-95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-        <CoverArtwork src={DIE_WITH_A_SMILE_ARTWORK} alt="Die With A Smile artwork" sizeClass="h-10 w-10" roundedClass="rounded-[9px]" sizePx={40} />
-
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-white">
-            Die With A Smile
-          </div>
-          <div className="truncate text-[11px] text-[#8E8E93]">
-            Lady Gaga, Bruno Mars
-          </div>
-        </div>
-
-        <span className="shrink-0 text-[10px] font-semibold tracking-wide text-white/70">
-          NEW
-        </span>
-      </div>
-    </div>
-  );
-});
-
-const PromoThreeContent = memo(function PromoThreeContent() {
-  return (
-    <div className="space-y-3.5">
-      {/* Top 2 Kinetic Feature Pills */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2.5 text-[11.5px] font-semibold text-white">
-          <Zap className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
-          <span>Zero Login</span>
-        </div>
-        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2.5 text-[11.5px] font-semibold text-white">
-          <Link2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
-          <span>Spotify Links</span>
-        </div>
-      </div>
-
-      {/* Illuminated Spotlight Search Bar with Blinking Cursor */}
-      <div className="liquid-glass-search flex min-h-[52px] items-center rounded-[18px] border-[#30D158]/45 px-3.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_0_24px_rgba(48,209,88,0.16)]">
-        <Link2 className="h-4 w-4 shrink-0 text-[#30D158]" />
-        <div className="ml-2.5 flex min-w-0 flex-1 items-center">
-          <span className="truncate text-[13px] font-medium text-white">
-            open.spotify.com/track/…
-          </span>
-          <span
-            aria-hidden="true"
-            className="animate-promo-cursor ml-0.5 inline-block h-4 w-[2px] shrink-0 rounded-full bg-[#30D158]"
-          />
-        </div>
-        <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-white/20 bg-white/[0.12] px-2.5 py-1 text-[11px] font-semibold text-white">
-          <ClipboardPaste className="h-3 w-3 text-[#30D158]" />
-          <span>Paste</span>
-        </span>
-      </div>
-
-      {/* Bottom 2 Kinetic Feature Pills */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2.5 text-[11.5px] font-semibold text-white">
-          <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
-          <span>1-Tap Copy</span>
-        </div>
-        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2.5 text-[11.5px] font-semibold text-white">
-          <Smartphone className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
-          <span>iOS Web App</span>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-const PromoFourContent = memo(function PromoFourContent() {
-  return (
-    <div className="flex flex-col items-center">
-      {/* Top Tier: Dimmed Locked Instagram Music Search */}
-      <div className="w-full rounded-[20px] border border-white/[0.08] bg-[#141416] p-3.5 opacity-65">
-        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
-          <span className="inline-flex items-center gap-1.5">
-            <Lock className="h-3 w-3 text-[#FF453A]" />
-            <span>Before · Instagram Search</span>
-          </span>
-          <span className="text-[#FF453A]">Hidden</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between rounded-xl border border-white/[0.06] bg-black/50 px-3 py-2">
-          <span className="truncate text-[12.5px] text-[#AEAEB2]">About You The 1975</span>
-          <span className="shrink-0 text-[11px] font-medium text-[#6E6E73]">
-            No results found
-          </span>
-        </div>
-      </div>
-
-      {/* Luminous Downward Glass Chevron */}
-      <div className="my-2.5 flex items-center justify-center">
-        <div className="animate-promo-chevron flex h-8 w-8 items-center justify-center rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] text-[#30D158] shadow-[0_0_20px_rgba(48,209,88,0.28)]">
-          <ChevronDown className="h-4 w-4 stroke-[2.6]" />
-        </div>
-      </div>
-
-      {/* Bottom Tier: Illuminated TrackCode Unlocked Card */}
-      <div className="relative w-full overflow-hidden rounded-[22px] border border-[#30D158]/35 bg-gradient-to-b from-[#232527] to-[#141618] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_14px_34px_rgba(0,0,0,0.7)]">
-        <div className="flex items-center gap-2.5">
-          <CoverArtwork sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate text-[14px] font-semibold text-white">
-                About You
-              </span>
-              <VerifiedBadge />
-            </div>
-            <div className="truncate text-[11.5px] text-[#AEAEB2]">The 1975</div>
-          </div>
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#30D158] px-2.5 py-1 text-[11px] font-semibold text-black">
-            <Check className="h-3 w-3 stroke-[2.8]" />
-            <span>Copied</span>
-          </span>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between rounded-xl border border-white/10 bg-[#2C2C2E] px-3 py-2">
-          <span className="font-mono-isrc text-[12.5px] font-semibold text-white">
-            {ABOUT_YOU_ISRC}
-          </span>
-          <span className="text-[10.5px] font-semibold text-[#30D158]">
-            Paste in Instagram
-          </span>
-        </div>
       </div>
     </div>
   );
@@ -824,7 +544,7 @@ const SlideFiveContent = memo(function SlideFiveContent() {
       label: 'Copy ISRC code',
       pillText: ABOUT_YOU_ISRC,
       pillClass:
-        'font-mono-isrc border border-[#30D158]/35 bg-[#30D158]/[0.1] text-[#30D158] text-[10px]',
+        'font-mono-isrc border border-[#30D158]/35 bg-[#30D158]/[0.1] text-[#30D158] text-[9.5px]',
     },
     {
       num: '4',
@@ -836,29 +556,29 @@ const SlideFiveContent = memo(function SlideFiveContent() {
   ] as const;
 
   return (
-    <div className="relative space-y-2.5">
+    <div className="relative space-y-2">
       {/* Subtle vertical connecting timeline line */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute top-5 bottom-5 left-[23px] z-0 w-px bg-gradient-to-b from-white/[0.08] via-white/[0.18] to-[#30D158]/45"
+        className="pointer-events-none absolute top-4 bottom-4 left-[22px] z-0 w-px bg-gradient-to-b from-white/[0.08] via-white/[0.18] to-[#30D158]/45"
       />
 
       {steps.map((step) => (
         <div
           key={step.num}
-          className="relative z-10 flex items-center justify-between gap-2 rounded-2xl border border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-3.5 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
+          className="relative z-10 flex items-center justify-between gap-2 rounded-2xl border border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-3 py-2 shadow-[0_8px_18px_rgba(0,0,0,0.45)]"
         >
           <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] bg-[#262629] text-[10.5px] font-bold tabular-nums text-white">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] bg-[#262629] text-[10px] font-bold tabular-nums text-white">
               {step.num}
             </span>
-            <span className="truncate text-[11.5px] font-medium text-white/90">
+            <span className="truncate text-[11px] font-medium text-white/90">
               {step.label}
             </span>
           </div>
 
           <span
-            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold ${step.pillClass}`}
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[9.5px] font-semibold ${step.pillClass}`}
           >
             {step.pillText}
           </span>
@@ -868,28 +588,332 @@ const SlideFiveContent = memo(function SlideFiveContent() {
   );
 });
 
+/* ============================================================================
+ * TAB 2: PROMO SLIDES (4:5 360x450 -> 1080x1350)
+ * ========================================================================== */
+
+const PromoOneContent = memo(function PromoOneContent() {
+  return (
+    <div className="relative flex items-center justify-center py-1">
+      {/* Subtle radial glow behind floating tilted card */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-4 top-1/2 h-32 -translate-y-1/2 rounded-full"
+        style={{
+          background:
+            'radial-gradient(circle, rgba(48, 209, 88, 0.2) 0%, rgba(255, 255, 255, 0.05) 45%, transparent 72%)',
+        }}
+      />
+
+      {/* Floating Tilted (-rotate-2) TrackCode ISRC Card */}
+      <div className="animate-promo-float relative w-full overflow-hidden rounded-[22px] border border-white/[0.16] border-t-white/[0.28] bg-gradient-to-b from-[#252529] to-[#141417] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_20px_42px_rgba(0,0,0,0.85)]">
+        {/* Continuous GPU diagonal glass light-sweep */}
+        <span
+          aria-hidden="true"
+          className="animate-promo-sweep pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.08) 48%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.08) 52%, transparent 80%)',
+          }}
+        />
+
+        <div className="relative flex items-center gap-3">
+          <CoverArtwork sizeClass="h-11 w-11" roundedClass="rounded-xl" sizePx={44} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14.5px] font-semibold text-white">
+              About You
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#AEAEB2]">
+              <span className="truncate">The 1975</span>
+              <VerifiedBadge />
+            </div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span
+                className="inline-flex h-[15px] items-center rounded-[4px] px-1.5 text-[8.5px] font-semibold leading-none tracking-[0.04em]"
+                style={ALBUM_TYPE_BADGE_STYLE.album}
+              >
+                {ALBUM_TYPE_LABEL.album}
+              </span>
+              <span className="text-[10px] font-medium tabular-nums text-[#8E8E93]">
+                2022
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative mt-3 flex items-center justify-between gap-2 rounded-[12px] border border-[#30D158]/35 bg-[#2C2C2E] px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-[9px] font-medium tracking-wide text-[#8E8E93]">
+              Instagram Search Code
+            </div>
+            <div className="font-mono-isrc truncate text-[13.5px] font-semibold tracking-[0.02em] text-white">
+              {ABOUT_YOU_ISRC}
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#30D158] px-2.5 py-1 text-[10.5px] font-semibold text-black">
+            <Check className="h-3 w-3 stroke-[2.8]" />
+            <span>Copied</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PROMO_EQ_RADIUS = 10.5;
+const PROMO_EQ_CIRCUMFERENCE = 2 * Math.PI * PROMO_EQ_RADIUS;
+
+const PromoTwoContent = memo(function PromoTwoContent() {
+  return (
+    <div className="space-y-2">
+      {/* #1 Global Capsule with Live Progress Ring + 3-bar GPU Equalizer */}
+      <div className="relative flex translate-x-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.18] border-t-white/[0.28] bg-gradient-to-b from-[#252529] to-[#161619] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_26px_rgba(0,0,0,0.6)]">
+        <CoverArtwork
+          src={BIRDS_ARTWORK}
+          alt="BIRDS OF A FEATHER artwork"
+          sizeClass="h-10 w-10"
+          roundedClass="rounded-[9px]"
+          sizePx={40}
+        >
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="relative flex h-6 w-6 items-center justify-center rounded-full border border-white/40 bg-black/55">
+              <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+                <circle
+                  cx="12"
+                  cy="12"
+                  r={PROMO_EQ_RADIUS}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.25)"
+                  strokeWidth="1.8"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r={PROMO_EQ_RADIUS}
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeDasharray={PROMO_EQ_CIRCUMFERENCE}
+                  strokeDashoffset={PROMO_EQ_CIRCUMFERENCE * 0.34}
+                />
+              </svg>
+              <span className="relative flex h-2.5 items-end gap-[2px]" aria-hidden="true">
+                <span className="animate-promo-eq h-full w-[2px] rounded-full bg-white" />
+                <span
+                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
+                  style={{ animationDelay: '180ms' }}
+                />
+                <span
+                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
+                  style={{ animationDelay: '340ms' }}
+                />
+              </span>
+            </span>
+          </span>
+        </CoverArtwork>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[8.5px] font-bold tracking-wide text-white">
+              #1 GLOBAL
+            </span>
+          </div>
+          <div className="mt-0.5 truncate text-[13px] font-semibold text-white">
+            BIRDS OF A FEATHER
+          </div>
+          <div className="truncate text-[11px] text-[#8E8E93]">Billie Eilish</div>
+        </div>
+
+        <span className="shrink-0 rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[#30D158]">
+          ▲ 2
+        </span>
+      </div>
+
+      {/* #1 Sri Lanka Capsule (staggered right) */}
+      <div className="relative flex translate-x-2 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.12] border-t-white/[0.2] bg-gradient-to-b from-[#1E1E22] to-[#131316] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_22px_rgba(0,0,0,0.5)]">
+        <CoverArtwork
+          src={SARAGAYE_ARTWORK}
+          alt="Saragaye artwork"
+          sizeClass="h-10 w-10"
+          roundedClass="rounded-[9px]"
+          sizePx={40}
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded bg-white/10 px-1.5 py-0.5 text-[8.5px] font-bold tracking-wide text-white">
+              <SriLankaFlag />
+              <span>#1 SRI LANKA</span>
+            </span>
+          </div>
+          <div className="mt-0.5 truncate text-[13px] font-semibold text-white">
+            Saragaye
+          </div>
+          <div className="truncate text-[11px] text-[#8E8E93]">SANUKA</div>
+        </div>
+
+        <span className="shrink-0 rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[#30D158]">
+          ▲ 3
+        </span>
+      </div>
+
+      {/* #2 Global Capsule (staggered further) */}
+      <div className="relative flex translate-x-4 items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.08] border-t-white/[0.15] bg-gradient-to-b from-[#19191C] to-[#121214] px-3 py-2 opacity-95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <CoverArtwork
+          src={DIE_WITH_A_SMILE_ARTWORK}
+          alt="Die With A Smile artwork"
+          sizeClass="h-9 w-9"
+          roundedClass="rounded-[8px]"
+          sizePx={36}
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12.5px] font-semibold text-white">
+            Die With A Smile
+          </div>
+          <div className="truncate text-[10.5px] text-[#8E8E93]">
+            Lady Gaga, Bruno Mars
+          </div>
+        </div>
+
+        <span className="shrink-0 text-[9.5px] font-semibold tracking-wide text-white/70">
+          NEW
+        </span>
+      </div>
+    </div>
+  );
+});
+
+const PromoThreeContent = memo(function PromoThreeContent() {
+  return (
+    <div className="space-y-2.5">
+      {/* Top 2 Kinetic Feature Pills */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-semibold text-white">
+          <Zap className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+          <span>Zero Login</span>
+        </div>
+        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-semibold text-white">
+          <Link2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+          <span>Spotify Links</span>
+        </div>
+      </div>
+
+      {/* Illuminated Spotlight Search Bar with Blinking Cursor */}
+      <div className="liquid-glass-search flex min-h-[46px] items-center rounded-[16px] border-[#30D158]/45 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_0_24px_rgba(48,209,88,0.16)]">
+        <Link2 className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+        <div className="ml-2 flex min-w-0 flex-1 items-center">
+          <span className="truncate text-[12.5px] font-medium text-white">
+            open.spotify.com/track/…
+          </span>
+          <span
+            aria-hidden="true"
+            className="animate-promo-cursor ml-0.5 inline-block h-3.5 w-[2px] shrink-0 rounded-full bg-[#30D158]"
+          />
+        </div>
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-white/20 bg-white/[0.12] px-2.5 py-0.5 text-[10.5px] font-semibold text-white">
+          <ClipboardPaste className="h-3 w-3 text-[#30D158]" />
+          <span>Paste</span>
+        </span>
+      </div>
+
+      {/* Bottom 2 Kinetic Feature Pills */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-semibold text-white">
+          <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+          <span>1-Tap Copy</span>
+        </div>
+        <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-3 py-2 text-[11px] font-semibold text-white">
+          <Smartphone className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+          <span>iOS Web App</span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PromoFourContent = memo(function PromoFourContent() {
+  return (
+    <div className="flex flex-col items-center">
+      {/* Top Tier: Dimmed Locked Instagram Music Search */}
+      <div className="w-full rounded-[18px] border border-white/[0.08] bg-[#141416] p-3 opacity-65">
+        <div className="flex items-center justify-between text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#8E8E93]">
+          <span className="inline-flex items-center gap-1.5">
+            <Lock className="h-3 w-3 text-[#FF453A]" />
+            <span>Before · Instagram Search</span>
+          </span>
+          <span className="text-[#FF453A]">Hidden</span>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between rounded-xl border border-white/[0.06] bg-black/50 px-2.5 py-1.5">
+          <span className="truncate text-[12px] text-[#AEAEB2]">About You The 1975</span>
+          <span className="shrink-0 text-[10.5px] font-medium text-[#6E6E73]">
+            No results found
+          </span>
+        </div>
+      </div>
+
+      {/* Luminous Downward Glass Chevron */}
+      <div className="my-2 flex items-center justify-center">
+        <div className="animate-promo-chevron flex h-7 w-7 items-center justify-center rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] text-[#30D158] shadow-[0_0_20px_rgba(48,209,88,0.28)]">
+          <ChevronDown className="h-4 w-4 stroke-[2.6]" />
+        </div>
+      </div>
+
+      {/* Bottom Tier: Illuminated TrackCode Unlocked Card */}
+      <div className="relative w-full overflow-hidden rounded-[20px] border border-[#30D158]/35 bg-gradient-to-b from-[#232527] to-[#141618] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_14px_34px_rgba(0,0,0,0.7)]">
+        <div className="flex items-center gap-2.5">
+          <CoverArtwork sizeClass="h-10 w-10" roundedClass="rounded-[9px]" sizePx={40} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-[13.5px] font-semibold text-white">
+                About You
+              </span>
+              <VerifiedBadge />
+            </div>
+            <div className="truncate text-[11px] text-[#AEAEB2]">The 1975</div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#30D158] px-2.5 py-0.5 text-[10.5px] font-semibold text-black">
+            <Check className="h-3 w-3 stroke-[2.8]" />
+            <span>Copied</span>
+          </span>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between rounded-xl border border-white/10 bg-[#2C2C2E] px-2.5 py-1.5">
+          <span className="font-mono-isrc text-[12px] font-semibold text-white">
+            {ABOUT_YOU_ISRC}
+          </span>
+          <span className="text-[10px] font-semibold text-[#30D158]">
+            Paste in Instagram
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const PromoFiveTryNowLayout = memo(function PromoFiveTryNowLayout() {
   return (
     <>
       {/* Top Section (Above Sticker Zone) */}
       <div className="relative z-10 flex flex-col items-center text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85">
           <span>TrackCode · ISRC FINDER</span>
           <SriLankaFlag />
         </span>
 
-        <h2 className="mt-3.5 text-[38px] font-bold leading-none tracking-tight text-white">
+        <h2 className="mt-2.5 text-[32px] font-bold leading-none tracking-tight text-white">
           Try Now
         </h2>
 
-        <p className="mx-auto mt-2.5 max-w-[260px] text-[12.5px] leading-snug text-white/55">
+        <p className="mx-auto mt-1.5 max-w-[260px] text-[12px] leading-snug text-white/55">
           Paste a song or Spotify link &amp; unlock it on Instagram.
         </p>
 
         {/* Stacked Downward Chevrons */}
         <div
           aria-hidden="true"
-          className="animate-promo-chevron mt-3 flex flex-col items-center -space-y-2.5"
+          className="animate-promo-chevron mt-2 flex flex-col items-center -space-y-2.5"
         >
           <ChevronDown className="h-4 w-4 text-white/30" />
           <ChevronDown className="h-4 w-4 text-white/70" />
@@ -897,7 +921,7 @@ const PromoFiveTryNowLayout = memo(function PromoFiveTryNowLayout() {
       </div>
 
       {/* Center Dedicated Instagram Link Sticker Zone */}
-      <div className="relative z-10 flex h-[168px] w-full flex-col items-center justify-center rounded-[28px] border border-dashed border-white/[0.15] bg-[#040405] shadow-[inset_0_4px_24px_rgba(0,0,0,0.95)]">
+      <div className="relative z-10 flex h-[126px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-white/[0.15] bg-[#040405] shadow-[inset_0_4px_24px_rgba(0,0,0,0.95)]">
         <span className="select-none text-[10px] font-medium uppercase tracking-[0.22em] text-white/[0.16]">
           TAP STICKER · ADD LINK HERE
         </span>
@@ -908,17 +932,306 @@ const PromoFiveTryNowLayout = memo(function PromoFiveTryNowLayout() {
         {/* Stacked Upward Chevrons */}
         <div
           aria-hidden="true"
-          className="mb-3 flex flex-col items-center -space-y-2.5"
+          className="mb-2 flex flex-col items-center -space-y-2.5"
         >
           <ChevronUp className="h-4 w-4 text-white/70" />
           <ChevronUp className="h-4 w-4 text-white/30" />
         </div>
 
-        <div className="w-full rounded-2xl border border-white/[0.09] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-2.5 text-[11.5px] font-medium text-white/75 shadow-[0_8px_22px_rgba(0,0,0,0.5)]">
+        <div className="w-full rounded-2xl border border-white/[0.09] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-2 text-[11px] font-medium text-white/75 shadow-[0_8px_22px_rgba(0,0,0,0.5)]">
           Free · Zero Login · Works in Safari &amp; Chrome
         </div>
       </div>
     </>
+  );
+});
+
+/* ============================================================================
+ * TAB 3: IG POSTS SLIDES (4:5 360x450 -> 1080x1350 with Attached Link CTA)
+ * ========================================================================== */
+
+const PostOneContent = memo(function PostOneContent() {
+  return (
+    <div className="flex flex-col items-center">
+      {/* TrackCode Spotlight Search Bar with Highlighted Paste CTA */}
+      <div className="liquid-glass-search flex min-h-[46px] w-full items-center rounded-[15px] px-3 py-1.5">
+        <Link2 className="h-4 w-4 shrink-0 text-[#30D158]" />
+        <span className="ml-2 flex-1 truncate text-[12px] font-medium text-white">
+          open.spotify.com/track/1fDFHX...
+        </span>
+        <span className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-[#30D158]/50 bg-[#30D158]/20 px-2.5 py-1 text-[10.5px] font-semibold text-white shadow-[0_0_14px_rgba(48,209,88,0.22)]">
+          <ClipboardPaste className="h-3 w-3 text-[#30D158]" />
+          <span>Paste</span>
+        </span>
+      </div>
+
+      {/* Downward Glass Arrow */}
+      <div className="my-2 flex items-center justify-center">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#30D158]/40 bg-gradient-to-b from-[#232327] to-[#141417] text-[#30D158] shadow-[0_0_18px_rgba(48,209,88,0.24)]">
+          <ArrowDown className="h-3.5 w-3.5 stroke-[2.4]" />
+        </div>
+      </div>
+
+      {/* Resolved About You Capsule */}
+      <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.16] border-t-white/[0.24] bg-gradient-to-b from-[#232327] to-[#151518] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_28px_rgba(0,0,0,0.6)]">
+        <CoverArtwork sizeClass="h-11 w-11" roundedClass="rounded-[10px]" sizePx={44} />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <span className="truncate text-[13.5px] font-semibold text-white">
+              About You
+            </span>
+            <VerifiedBadge />
+          </div>
+          <div className="truncate text-[11.5px] text-[#8E8E93]">The 1975</div>
+          <div className="mt-1 inline-flex items-center rounded-md border border-[#30D158]/35 bg-[#30D158]/[0.1] px-2 py-0.5 font-mono-isrc text-[10px] font-semibold text-[#30D158]">
+            {ABOUT_YOU_ISRC}
+          </div>
+        </div>
+
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#30D158] text-black">
+          <Check className="h-3.5 w-3.5 stroke-[2.8]" />
+        </span>
+      </div>
+    </div>
+  );
+});
+
+const POST_PLAY_RADIUS = 14.5;
+const POST_PLAY_CIRCUMFERENCE = 2 * Math.PI * POST_PLAY_RADIUS;
+
+const PostTwoContent = memo(function PostTwoContent() {
+  return (
+    <div className="relative overflow-hidden rounded-[22px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] p-3.5 shadow-[0_18px_42px_rgba(0,0,0,0.72)]">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_70%)]"
+      />
+
+      <div className="relative flex items-center gap-3">
+        {/* Album Artwork with Frosted Play/Pause & Progress Arc */}
+        <CoverArtwork sizeClass="h-16 w-16" roundedClass="rounded-2xl" sizePx={64}>
+          <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <span className="relative flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_4px_14px_rgba(0,0,0,0.7)]">
+              <svg viewBox="0 0 34 34" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+                <circle
+                  cx="17"
+                  cy="17"
+                  r={POST_PLAY_RADIUS}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.22)"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx="17"
+                  cy="17"
+                  r={POST_PLAY_RADIUS}
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeDasharray={POST_PLAY_CIRCUMFERENCE}
+                  strokeDashoffset={POST_PLAY_CIRCUMFERENCE * 0.35}
+                />
+              </svg>
+              <Pause className="relative h-3.5 w-3.5 fill-white text-white" />
+            </span>
+          </span>
+        </CoverArtwork>
+
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-semibold text-white">
+            About You
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#AEAEB2]">
+            <span className="truncate">The 1975</span>
+            <VerifiedBadge />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {/* 3-bar GPU scaleY Equalizer */}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.08] px-2.5 py-0.5 text-[10px] font-semibold text-white">
+              <span className="flex h-2.5 items-end gap-[2px]" aria-hidden="true">
+                <span className="animate-promo-eq h-full w-[2px] rounded-full bg-white" />
+                <span
+                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
+                  style={{ animationDelay: '180ms' }}
+                />
+                <span
+                  className="animate-promo-eq h-full w-[2px] rounded-full bg-white"
+                  style={{ animationDelay: '340ms' }}
+                />
+              </span>
+              <span>Playing 0:18</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Verification Micro-Banner + ISRC */}
+      <div className="relative mt-3 rounded-xl border border-white/[0.08] bg-[#2C2C2E] px-3 py-2">
+        <div className="text-[10.5px] font-medium text-[#AEAEB2]">
+          Verify the exact version before copying
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span className="font-mono-isrc text-[13px] font-semibold text-white">
+            {ABOUT_YOU_ISRC}
+          </span>
+          <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#30D158]">
+            <Copy className="h-3 w-3" />
+            <span>Ready</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PostThreeContent = memo(function PostThreeContent() {
+  return (
+    <div className="space-y-2.5">
+      {/* Header Label + Edge-to-Edge Region Switcher Toggled to Sri Lanka */}
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/75">
+          POPULAR HITS
+        </span>
+        <span className="animate-updated-shimmer text-[9.5px] font-semibold uppercase tracking-[0.12em]">
+          UPDATED DAILY
+        </span>
+      </div>
+
+      <div className="relative grid w-full grid-cols-2 rounded-2xl border border-white/[0.08] bg-[#131315] p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)]">
+        <span
+          aria-hidden="true"
+          style={{ transform: 'translate3d(100%, 0, 0)' }}
+          className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)]"
+        />
+        <span className="relative z-10 flex items-center justify-center gap-1.5 py-1.5 text-[11.5px] font-medium text-white/50">
+          <Globe className="h-3 w-3" />
+          <span>Global</span>
+        </span>
+        <span className="relative z-10 flex items-center justify-center gap-1.5 py-1.5 text-[11.5px] font-semibold text-white">
+          <SriLankaFlag />
+          <span>Sri Lanka</span>
+        </span>
+      </div>
+
+      {/* #1 & #2 Sri Lanka Chart Capsules */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2.5 rounded-2xl border border-white/[0.12] border-t-white/[0.2] bg-gradient-to-b from-[#1F1F23] to-[#141416] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <CoverArtwork src={SARAGAYE_ARTWORK} alt="Saragaye artwork" sizeClass="h-10 w-10" roundedClass="rounded-[9px]" sizePx={40} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-semibold text-white">Saragaye</div>
+            <div className="truncate text-[11px] text-[#8E8E93]">SANUKA</div>
+          </div>
+          <span className="shrink-0 rounded-full border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+            #1 <span className="text-white/30">|</span>{' '}
+            <span className="text-[#30D158]">▲ 2</span>
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5 rounded-2xl border border-white/[0.09] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <CoverArtwork src={MANIKE_ARTWORK} alt="Manike artwork" sizeClass="h-10 w-10" roundedClass="rounded-[9px]" sizePx={40} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-semibold text-white">Manike</div>
+            <div className="truncate text-[11px] text-[#8E8E93]">Yohani</div>
+          </div>
+          <span className="shrink-0 rounded-full border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+            #2 <span className="text-white/30">|</span>{' '}
+            <span className="text-[#30D158]">▲ 1</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PostFourContent = memo(function PostFourContent() {
+  return (
+    <div className="space-y-3">
+      {/* Glossy Obsidian-and-Emerald Squircle TrackCode iOS App Icon + Lockup */}
+      <div className="flex items-center gap-3.5 px-1">
+        <div className="relative flex h-[60px] w-[60px] shrink-0 flex-col items-center justify-center overflow-hidden rounded-[20px] border border-white/20 bg-gradient-to-b from-[#1C211E] via-[#0F1110] to-[#050506] shadow-[0_12px_30px_rgba(0,0,0,0.8)]">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-[radial-gradient(ellipse_at_top,rgba(48,209,88,0.28),transparent_72%)]"
+          />
+          <span className="relative text-[11.5px] font-bold leading-[0.95] tracking-[-0.03em] text-white">
+            track
+          </span>
+          <span className="relative text-[11.5px] font-bold leading-[0.95] tracking-[-0.03em] text-white">
+            code
+          </span>
+          <span
+            aria-hidden="true"
+            className="relative mt-1 h-1 w-3.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.85)]"
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] font-semibold text-white">TrackCode</div>
+          <div className="text-[11.5px] text-[#8E8E93]">
+            Full-screen iOS Home Screen app
+          </div>
+          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#30D158]/15 px-2 py-0.5 text-[9.5px] font-semibold text-[#30D158]">
+            Open as Web App
+          </span>
+        </div>
+      </div>
+
+      {/* Compact 3-Step Safari Guide Card */}
+      <div className="space-y-1.5 rounded-[20px] border border-white/[0.1] bg-gradient-to-b from-[#1C1C1F] to-[#131315] p-3 shadow-[0_12px_28px_rgba(0,0,0,0.55)]">
+        <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] text-white/90">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white">
+            1
+          </span>
+          <span>Open trackcode.online in Safari</span>
+        </div>
+        <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] text-white/90">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white">
+            2
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span>Tap ••• /</span>
+            <Share className="h-3 w-3 text-[#0A84FF]" />
+            <span>Share</span>
+          </span>
+        </div>
+        <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] text-white/90">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white">
+            3
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <PlusSquare className="h-3 w-3 text-[#30D158]" />
+            <span>Add to Home Screen</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const PostFiveContent = memo(function PostFiveContent() {
+  return (
+    <div className="flex flex-col items-center space-y-3">
+      {/* Bold Centered Liquid Glass Transformation Pill */}
+      <div className="w-full rounded-[22px] border border-white/[0.14] border-t-white/[0.24] bg-gradient-to-b from-[#232327] to-[#141417] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_36px_rgba(0,0,0,0.72)]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="rounded-xl border border-white/[0.12] bg-[#2C2C2E] px-2.5 py-1.5 font-mono-isrc text-[11px] font-semibold text-white">
+            {ABOUT_YOU_ISRC}
+          </span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+          <span className="inline-flex items-center gap-1 rounded-xl bg-[#30D158] px-2.5 py-1.5 text-[10.5px] font-semibold text-black">
+            ✓ Track Found on IG Music
+          </span>
+        </div>
+      </div>
+
+      {/* Sleek Dark-Glass Bookmark Pill */}
+      <div className="liquid-glass-pill flex items-center gap-2 rounded-2xl px-4 py-2 text-[11.5px] font-medium text-white/90">
+        <Bookmark className="h-3.5 w-3.5 shrink-0 text-[#30D158]" />
+        <span>Bookmark this post so you never lose it</span>
+      </div>
+    </div>
   );
 });
 
@@ -936,6 +1249,18 @@ interface SlideDefinition {
   customLayout?: ReactNode;
   bottomSlot?: ReactNode;
   content?: ReactNode;
+}
+
+function makeBottomPill(label: string) {
+  return (
+    <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] font-medium tracking-[0.01em] text-white/90">
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.85)]"
+        aria-hidden="true"
+      />
+      <span>{label}</span>
+    </div>
+  );
 }
 
 const GUIDE_SLIDES: SlideDefinition[] = [
@@ -981,7 +1306,7 @@ const GUIDE_SLIDES: SlideDefinition[] = [
     glowStyle:
       'radial-gradient(75% 80% at 50% 0%, rgba(48, 209, 88, 0.18) 0%, rgba(90, 120, 180, 0.12) 55%, transparent 100%)',
     bottomSlot: (
-      <div className="inline-flex items-center gap-2 rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.65),0_0_20px_rgba(48,209,88,0.18)]">
+      <div className="inline-flex items-center gap-2 rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] px-4 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.65),0_0_20px_rgba(48,209,88,0.18)]">
         <span
           className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.9)]"
           aria-hidden="true"
@@ -997,13 +1322,13 @@ const GUIDE_SLIDES: SlideDefinition[] = [
     filename: 'trackcode-guide-all-in-one.png',
     badge: 'ALL-IN-ONE · QUICK GUIDE',
     headline: 'Unlock any song on Instagram.',
-    paddingClass: 'py-11',
+    paddingClass: 'py-7',
     customHeader: (
       <>
-        <span className="inline-block rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
+        <span className="inline-block rounded-full border border-white/[0.12] bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
           ALL-IN-ONE · QUICK GUIDE
         </span>
-        <h2 className="mt-2.5 text-[22px] font-bold leading-tight tracking-tight text-white">
+        <h2 className="mt-2 text-[20px] font-bold leading-tight tracking-tight text-white">
           Unlock any song on Instagram.
         </h2>
       </>
@@ -1063,7 +1388,7 @@ const PROMO_SLIDES: SlideDefinition[] = [
     glowStyle:
       'radial-gradient(75% 80% at 50% 0%, rgba(48, 209, 88, 0.18) 0%, rgba(90, 120, 180, 0.12) 55%, transparent 100%)',
     bottomSlot: (
-      <div className="inline-flex items-center gap-2 rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] px-4 py-2 text-[12px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.65),0_0_20px_rgba(48,209,88,0.18)]">
+      <div className="inline-flex items-center gap-2 rounded-full border border-[#30D158]/45 bg-gradient-to-b from-[#232624] to-[#141715] px-4 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.65),0_0_20px_rgba(48,209,88,0.18)]">
         <span
           className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.9)]"
           aria-hidden="true"
@@ -1079,10 +1404,76 @@ const PROMO_SLIDES: SlideDefinition[] = [
     filename: 'trackcode-promo-try-now.png',
     badge: 'TRACKCODE · TRY NOW',
     headline: 'Try Now',
-    paddingClass: 'py-12',
+    paddingClass: 'py-7',
     glowStyle:
       'radial-gradient(85% 45% at 50% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(48, 209, 88, 0.08) 45%, transparent 100%)',
     customLayout: <PromoFiveTryNowLayout />,
+  },
+];
+
+const IG_POST_SLIDES: SlideDefinition[] = [
+  {
+    id: 'post-1',
+    anchor: 'post-spotify-link',
+    filename: 'trackcode-post-01-spotify-link.png',
+    badge: '1-TAP PASTE · NO TYPING',
+    headline: 'Paste a Spotify link. Unlock the exact track.',
+    glowStyle:
+      'radial-gradient(75% 80% at 30% 0%, rgba(48, 209, 88, 0.16) 0%, rgba(58, 75, 115, 0.12) 55%, transparent 100%)',
+    bottomSlot: makeBottomPill('Tap link on post · trackcode.online'),
+    content: <PostOneContent />,
+  },
+  {
+    id: 'post-2',
+    anchor: 'post-audio-preview',
+    filename: 'trackcode-post-02-audio-preview.png',
+    badge: '30-SEC AUDIO PREVIEWS',
+    headline: 'Hear the exact clip before you post.',
+    glowStyle:
+      'radial-gradient(75% 80% at 70% 0%, rgba(48, 209, 88, 0.15) 0%, rgba(255, 255, 255, 0.04) 55%, transparent 100%)',
+    bottomSlot: makeBottomPill('Try it via link on post · trackcode.online'),
+    content: <PostTwoContent />,
+  },
+  {
+    id: 'post-3',
+    anchor: 'post-sri-lanka-charts',
+    filename: 'trackcode-post-03-sri-lanka-charts.png',
+    badge: (
+      <>
+        <span>DAILY CHARTS · GLOBAL &amp;</span>
+        <SriLankaFlag />
+        <span>LK</span>
+      </>
+    ),
+    headline: 'Local tracks Instagram hides? Unlocked.',
+    glowStyle:
+      'radial-gradient(75% 80% at 50% 0%, rgba(48, 209, 88, 0.16) 0%, rgba(90, 120, 180, 0.12) 55%, transparent 100%)',
+    bottomSlot: makeBottomPill('Tap link on post · trackcode.online'),
+    content: <PostThreeContent />,
+  },
+  {
+    id: 'post-4',
+    anchor: 'post-ios-app',
+    filename: 'trackcode-post-04-ios-app.png',
+    badge: 'IOS WEB APP · ZERO APP STORE',
+    headline: 'Add TrackCode to your iPhone Home Screen.',
+    glowStyle:
+      'radial-gradient(75% 80% at 30% 0%, rgba(48, 209, 88, 0.15) 0%, rgba(255, 255, 255, 0.05) 55%, transparent 100%)',
+    bottomSlot: makeBottomPill('Open link on post in Safari · trackcode.online'),
+    content: <PostFourContent />,
+  },
+  {
+    id: 'post-5',
+    anchor: 'post-save-cover',
+    filename: 'trackcode-post-05-save-cover.png',
+    badge: 'SAVE FOR YOUR NEXT STORY',
+    headline: 'How to get ANY song on your IG Story.',
+    subtext: '"For when Instagram refuses to show the song you want."',
+    subtextItalic: true,
+    glowStyle:
+      'radial-gradient(78% 82% at 50% 0%, rgba(48, 209, 88, 0.18) 0%, rgba(58, 75, 115, 0.12) 55%, transparent 100%)',
+    bottomSlot: makeBottomPill('Link attached on post · trackcode.online'),
+    content: <PostFiveContent />,
   },
 ];
 
@@ -1094,8 +1485,8 @@ function useFullscreenScale(active: boolean): number {
 
     const update = () => {
       const maxW = (window.innerWidth - 24) / 360;
-      const maxH = (window.innerHeight - 48) / 640;
-      setScale(Math.min(maxW, maxH, 1.35));
+      const maxH = (window.innerHeight - 48) / 450;
+      setScale(Math.min(maxW, maxH, 1.45));
     };
 
     update();
@@ -1117,8 +1508,13 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
   const cardRefs = useRef<Record<string, HTMLElement | null>>({});
   const fullscreenScale = useFullscreenScale(Boolean(fullscreenSlideId));
 
-  const visibleSlides = activeTab === 'guide' ? GUIDE_SLIDES : PROMO_SLIDES;
-  const allSlides = [...GUIDE_SLIDES, ...PROMO_SLIDES];
+  const visibleSlides =
+    activeTab === 'guide'
+      ? GUIDE_SLIDES
+      : activeTab === 'promo'
+        ? PROMO_SLIDES
+        : IG_POST_SLIDES;
+  const allSlides = [...GUIDE_SLIDES, ...PROMO_SLIDES, ...IG_POST_SLIDES];
   const activeFullscreenSlide = fullscreenSlideId
     ? allSlides.find((s) => s.id === fullscreenSlideId) ?? null
     : null;
@@ -1246,7 +1642,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
     try {
       const dataUrl = await toPng(node, {
         width: 360,
-        height: 640,
+        height: 450,
         pixelRatio: 3,
         cacheBust: false,
         backgroundColor: '#09090B',
@@ -1277,12 +1673,19 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
     }
   }, []);
 
+  const thumbTransform =
+    activeTab === 'guide'
+      ? 'translate3d(0%, 0, 0)'
+      : activeTab === 'promo'
+        ? 'translate3d(100%, 0, 0)'
+        : 'translate3d(200%, 0, 0)';
+
   const fullscreenModal = activeFullscreenSlide ? (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090B] p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={`Fullscreen Story slide: ${activeFullscreenSlide.headline}`}
+      aria-label={`Fullscreen 4:5 slide: ${activeFullscreenSlide.headline}`}
       onClick={() => setFullscreenSlideId(null)}
     >
       {!isCleanMode && (
@@ -1413,37 +1816,31 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
           isCleanMode ? 'py-8 sm:py-12' : 'pt-8 pb-28 lg:pt-10 lg:pb-12'
         }`}
       >
-        {/* Guide Intro Header & Segmented Tab Switcher (Hidden in Screenshot View) */}
+        {/* Guide Intro Header & 3-Segment Tab Switcher (Hidden in Screenshot View) */}
         {!isCleanMode && (
           <section className="mx-auto mb-9 max-w-2xl px-2 text-center sm:px-0">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#AEAEB2]">
               <Sparkles className="h-3 w-3 text-[#30D158]" />
-              <span>1080×1920 Story &amp; Reel Studio</span>
+              <span>1080×1350 Feed &amp; Carousel Studio</span>
             </span>
             <h1 className="title-ambient-glow mt-3.5 text-[28px] font-bold leading-[1.12] tracking-[-0.03em] text-white sm:text-[36px]">
               How to Unlock Hidden Songs on Instagram Music
             </h1>
             <p className="mt-2.5 text-[14.5px] leading-relaxed text-[#98989D] sm:text-[15.5px]">
-              Download exact <strong className="font-semibold text-white">1080×1920</strong> PNG
-              Story cards or switch to <strong className="font-semibold text-white">Promo &amp; Motion</strong>{' '}
-              for animated vertical promo slides.
+              Download exact <strong className="font-semibold text-white">1080×1350</strong> (4:5)
+              PNG cards for Instagram posts, carousels, and promos.
             </p>
 
-            {/* Monochrome Segmented Glass Tab Switcher */}
+            {/* 3-Column Monochrome Segmented Glass Tab Switcher */}
             <div
               role="tablist"
               aria-label="Guide slide collections"
-              className="relative mx-auto mt-6 grid max-w-[390px] grid-cols-2 rounded-2xl border border-white/[0.08] bg-[#131315] p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)]"
+              className="relative mx-auto mt-6 grid w-full max-w-[420px] grid-cols-3 rounded-2xl border border-white/[0.08] bg-[#131315] p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)]"
             >
               <span
                 aria-hidden="true"
-                style={{
-                  transform:
-                    activeTab === 'guide'
-                      ? 'translate3d(0%, 0, 0)'
-                      : 'translate3d(100%, 0, 0)',
-                }}
-                className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                style={{ transform: thumbTransform }}
+                className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-8px)/3)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
               />
 
               <button
@@ -1451,14 +1848,13 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                 role="tab"
                 aria-selected={activeTab === 'guide'}
                 onClick={() => setActiveTab('guide')}
-                className={`relative z-10 flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+                className={`relative z-10 flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-[12px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 sm:text-[12.5px] ${
                   activeTab === 'guide'
                     ? 'font-semibold text-white'
                     : 'font-medium text-white/50 hover:text-white/80'
                 }`}
               >
-                <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span>Step-by-Step Guide</span>
+                <span>Step Guide</span>
               </button>
 
               <button
@@ -1466,25 +1862,40 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                 role="tab"
                 aria-selected={activeTab === 'promo'}
                 onClick={() => setActiveTab('promo')}
-                className={`relative z-10 flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+                className={`relative z-10 flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-[12px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 sm:text-[12.5px] ${
                   activeTab === 'promo'
                     ? 'font-semibold text-white'
                     : 'font-medium text-white/50 hover:text-white/80'
                 }`}
               >
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#30D158]" aria-hidden="true" />
-                <span>Promo &amp; Motion</span>
+                <span>Promo</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'posts'}
+                onClick={() => setActiveTab('posts')}
+                className={`relative z-10 flex min-h-[38px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-[12px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 sm:text-[12.5px] ${
+                  activeTab === 'posts'
+                    ? 'font-semibold text-white'
+                    : 'font-medium text-white/50 hover:text-white/80'
+                }`}
+              >
+                <span>IG Posts</span>
               </button>
             </div>
           </section>
         )}
 
-        {/* 4 Vertical 9:16 Studio Story/Reel Cards */}
+        {/* 5 Vertical 4:5 Studio Cards */}
         <section
           aria-label={
             activeTab === 'guide'
-              ? 'Step-by-step Story guide slides'
-              : 'Promotional motion Story slides'
+              ? 'Step-by-step 4:5 guide cards'
+              : activeTab === 'promo'
+                ? 'Promotional 4:5 cards'
+                : 'Instagram 4:5 post cards'
           }
           className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-10"
         >
@@ -1498,7 +1909,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                 id={slide.anchor}
                 className="flex flex-col items-center last:md:col-span-2"
               >
-                <div className="flex w-full justify-center max-[375px]:-mb-8 max-[375px]:origin-top max-[375px]:scale-[0.94]">
+                <div className="flex w-full justify-center max-[375px]:-mb-6 max-[375px]:origin-top max-[375px]:scale-[0.94]">
                   <StorySlideCard
                     cardRef={(node) => {
                       cardRefs.current[slide.id] = node;
@@ -1524,7 +1935,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                       type="button"
                       disabled={isExporting}
                       onClick={() => void handleDownloadSlide(slide)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.14] bg-gradient-to-b from-[#232326] to-[#161618] px-3.5 py-2 text-[12px] font-medium text-white transition-colors hover:border-white/[0.24] active:scale-[0.97] disabled:cursor-wait disabled:opacity-75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 cursor-pointer"
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/[0.14] bg-gradient-to-b from-[#232326] to-[#161618] px-3.5 py-2 text-[12px] font-medium text-white transition-colors hover:border-white/[0.24] active:scale-[0.97] disabled:cursor-wait disabled:opacity-75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
                     >
                       {isExporting ? (
                         <>
@@ -1532,11 +1943,11 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                           <span>Rendering…</span>
                         </>
                       ) : isSaved ? (
-                        <span className="text-[#30D158]">✓ Saved 1080p</span>
+                        <span className="text-[#30D158]">✓ Saved 4:5</span>
                       ) : (
                         <>
                           <Download className="h-3.5 w-3.5 text-[#30D158]" />
-                          <span>Download 1080p</span>
+                          <span>Download 4:5</span>
                         </>
                       )}
                     </button>
@@ -1547,7 +1958,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                       className="liquid-glass inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3.5 py-2 text-[12px] font-medium text-[#D1D1D6] transition-colors hover:bg-white/[0.1] hover:text-white active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
                     >
                       <Maximize2 className="h-3.5 w-3.5 text-[#30D158]" />
-                      <span>Fullscreen 9:16</span>
+                      <span>Fullscreen 4:5</span>
                     </button>
                   </div>
                 )}
