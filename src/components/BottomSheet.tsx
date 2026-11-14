@@ -15,6 +15,7 @@ import {
   loadGuideExpandedPreference,
   saveGuideExpandedPreference,
 } from '../utils/spotifyInput';
+import { AcousticWaveform } from './AcousticWaveform';
 
 const PREVIEW_RING_RADIUS = 18.9;
 const PREVIEW_RING_CIRCUMFERENCE = 2 * Math.PI * PREVIEW_RING_RADIUS;
@@ -27,6 +28,7 @@ interface BottomSheetProps {
   isAudioPlaying?: boolean;
   isAudioLoading?: boolean;
   audioProgress?: number;
+  getAudioGainMultiplier?: () => number;
   onTogglePreview?: () => void;
   onClose: () => void;
   onCopied: (isrc: string, copiedTrack?: TrackItem) => void;
@@ -46,6 +48,7 @@ export const BottomSheet = memo(function BottomSheet({
   isAudioPlaying = false,
   isAudioLoading = false,
   audioProgress = 0,
+  getAudioGainMultiplier,
   onTogglePreview,
   onClose,
   onCopied,
@@ -454,26 +457,37 @@ export const BottomSheet = memo(function BottomSheet({
               </svg>
             </p>
             {activeTrack && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-[#8E8E93]">
-                <span
-                  className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.04em]"
-                  style={ALBUM_TYPE_BADGE_STYLE[activeTrack.albumType]}
-                >
-                  {ALBUM_TYPE_LABEL[activeTrack.albumType]}
-                </span>
-                {activeTrack.releaseYear && (
-                  <span className="tabular-nums font-medium text-[#8E8E93]">
-                    {activeTrack.releaseYear}
-                  </span>
-                )}
-                {activeTrack.explicit && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[12px] text-[#8E8E93]">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <span
-                    className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.02em]"
-                    style={EXPLICIT_BADGE_STYLE}
+                    className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.04em]"
+                    style={ALBUM_TYPE_BADGE_STYLE[activeTrack.albumType]}
                   >
-                    Explicit
+                    {ALBUM_TYPE_LABEL[activeTrack.albumType]}
                   </span>
-                )}
+                  {activeTrack.releaseYear && (
+                    <span className="tabular-nums font-medium text-[#8E8E93]">
+                      {activeTrack.releaseYear}
+                    </span>
+                  )}
+                  {activeTrack.explicit && (
+                    <span
+                      className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.02em]"
+                      style={EXPLICIT_BADGE_STYLE}
+                    >
+                      Explicit
+                    </span>
+                  )}
+                </div>
+                {isOpen &&
+                  (previewUrl || isAudioPlaying || isAudioLoading || audioProgress > 0) && (
+                    <AcousticWaveform
+                      isPlaying={isAudioPlaying}
+                      isLoading={isAudioLoading}
+                      hasProgress={audioProgress > 0}
+                      getGainMultiplier={getAudioGainMultiplier}
+                    />
+                  )}
               </div>
             )}
           </div>

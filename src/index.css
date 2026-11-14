@@ -319,6 +319,22 @@
   will-change: transform, opacity;
 }
 
+@keyframes isrc-waveform {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-isrc-wave {
+  transform-origin: center;
+  animation: isrc-waveform 0.9s ease-in-out infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton-shimmer::after,
   .trackcode-isrc-shimmer,
@@ -333,7 +349,8 @@
   .animate-promo-sweep,
   .animate-promo-eq,
   .animate-promo-cursor,
-  .animate-promo-chevron {
+  .animate-promo-chevron,
+  .animate-isrc-wave {
     animation: none;
   }
 

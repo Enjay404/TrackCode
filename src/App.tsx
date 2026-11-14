@@ -373,6 +373,11 @@ function TrackCodeWorkspace() {
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const analyserDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const hasAudioSignalRef = useRef(false);
   const loadedAudioSrcRef = useRef<string | null>(null);
   const loadedAudioTrackIdRef = useRef<string | null>(null);
   const playingTrackIdRef = useRef<string | null>(null);
@@ -420,6 +425,33 @@ function TrackCodeWorkspace() {
     toastTimerRef.current = window.setTimeout(() => {
       setToast(null);
     }, 2600);
+  }, []);
+
+  const stopAudioPreview = useCallback(() => {
+    if (previewFetchAbortRef.current) {
+      previewFetchAbortRef.current.abort();
+      previewFetchAbortRef.current = null;
+    }
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch {
+        // Ignore if no media loaded
+      }
+      audio.removeAttribute('src');
+      audio.load();
+    }
+    loadedAudioSrcRef.current = null;
+    loadedAudioTrackIdRef.current = null;
+    hasAudioSignalRef.current = false;
+    playingTrackIdRef.current = null;
+    isAudioLoadingRef.current = false;
+    setLoadedTrackId(null);
+    setPlayingTrackId(null);
+    setIsAudioLoading(false);
+    setAudioProgress(0);
   }, []);
 
   useEffect(() => {
@@ -496,6 +528,14 @@ function TrackCodeWorkspace() {
         audio.load();
         audioRef.current = null;
       }
+      if (audioContextRef.current) {
+        void audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      analyserRef.current = null;
+      mediaSourceRef.current = null;
+      analyserDataRef.current = null;
+      hasAudioSignalRef.current = false;
       loadedAudioSrcRef.current = null;
       loadedAudioTrackIdRef.current = null;
     };
@@ -542,6 +582,9 @@ function TrackCodeWorkspace() {
               : currentIdx - 1;
         const nextTrack = visibleTracks[nextIdx];
         if (nextTrack) {
+          if (playingTrackIdRef.current !== null && nextTrack.id !== playingTrackIdRef.current) {
+            stopAudioPreview();
+          }
           setInspectedTrack(nextTrack);
           setAutoCopiedSignal(0);
           const rowEl = document.querySelector<HTMLElement>(
@@ -577,7 +620,7 @@ function TrackCodeWorkspace() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDesktop, visibleTracks, activeDesktopTrack, trimmedQuery, hasSearched, showToast]);
+  }, [isDesktop, visibleTracks, activeDesktopTrack, trimmedQuery, hasSearched, showToast, stopAudioPreview]);
 
   const executeLookup = useCallback(
     async (rawInput: string, mode: 'link' | 'search') => {
@@ -638,6 +681,9 @@ function TrackCodeWorkspace() {
           const track = payload.track;
           cacheTrackPreviewsFromTracks([track]);
           (document.activeElement as HTMLElement | null)?.blur();
+          if (playingTrackIdRef.current !== null && track.id !== playingTrackIdRef.current) {
+            stopAudioPreview();
+          }
           setResults([track]);
           setHasSearched(true);
           setInspectedTrack(track);
@@ -727,7 +773,7 @@ function TrackCodeWorkspace() {
         }
       }
     },
-    [showToast]
+    [showToast, stopAudioPreview]
   );
 
   useEffect(() => {
@@ -819,6 +865,7 @@ function TrackCodeWorkspace() {
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
     audio.preload = 'none';
     audio.addEventListener('timeupdate', () => {
       const duration =
@@ -850,6 +897,98 @@ function TrackCodeWorkspace() {
     return audio;
   }, []);
 
+  const ensureAudioAnalyser = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const audio = audioRef.current ?? getOrCreateAudio();
+    if (mediaSourceRef.current && analyserRef.current) {
+      if (audioContextRef.current?.state === 'suspended') {
+        void audioContextRef.current.resume().catch(() => {});
+      }
+      return;
+    }
+
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = audioContextRef.current ?? new AudioCtx();
+      audioContextRef.current = ctx;
+
+      if (!analyserRef.current) {
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.78;
+        analyserRef.current = analyser;
+        analyserDataRef.current = new Uint8Array(new ArrayBuffer(analyser.fftSize));
+      }
+
+      if (!mediaSourceRef.current) {
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(analyserRef.current);
+        analyserRef.current.connect(ctx.destination);
+        mediaSourceRef.current = source;
+      }
+
+      if (ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+      }
+    } catch {
+      // Fall back cleanly to native <audio> playback and default gain multiplier (1)
+    }
+  }, [getOrCreateAudio]);
+
+  const getAudioGainMultiplier = useCallback((): number => {
+    const analyser = analyserRef.current;
+    const data = analyserDataRef.current;
+    const ctx = audioContextRef.current;
+    if (!analyser || !data || !ctx || ctx.state !== 'running') {
+      return 1;
+    }
+
+    analyser.getByteTimeDomainData(data);
+    let sumSq = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      const normalized = (data[i] - 128) / 128;
+      sumSq += normalized * normalized;
+    }
+    const rms = Math.sqrt(sumSq / data.length);
+    if (rms > 0.001) {
+      hasAudioSignalRef.current = true;
+    }
+    if (!hasAudioSignalRef.current) {
+      return 1;
+    }
+
+    // Simple gain-based multiplier [0.45 .. 1.28] derived from live RMS amplitude
+    return 0.45 + Math.min(1, rms * 3.2) * 0.83;
+  }, []);
+
+  useEffect(() => {
+    if (!playingTrackId) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopAudioPreview();
+      }
+    };
+
+    const handlePageExit = () => {
+      stopAudioPreview();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageExit);
+    window.addEventListener('beforeunload', handlePageExit);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageExit);
+      window.removeEventListener('beforeunload', handlePageExit);
+    };
+  }, [playingTrackId, stopAudioPreview]);
+
   const handleToggleTrackPreview = useCallback(
     (targetTrack: TrackItem) => {
       if (playingTrackIdRef.current === targetTrack.id) {
@@ -858,6 +997,7 @@ function TrackCodeWorkspace() {
           previewFetchAbortRef.current = null;
         }
         audioRef.current?.pause();
+        playingTrackIdRef.current = null;
         isAudioLoadingRef.current = false;
         setPlayingTrackId(null);
         setIsAudioLoading(false);
@@ -870,6 +1010,7 @@ function TrackCodeWorkspace() {
       }
 
       const audio = getOrCreateAudio();
+      ensureAudioAnalyser();
       const previewKey = getTrackPreviewCacheKey(targetTrack);
       const cachedIsrc = targetTrack.isrc ?? getCachedTrackIsrc(targetTrack.id);
       const cachedPreview =
@@ -880,6 +1021,7 @@ function TrackCodeWorkspace() {
 
       if (typeof cachedPreview === 'string' && cachedPreview) {
         setCachedTrackPreview(previewKey, cachedPreview);
+        playingTrackIdRef.current = targetTrack.id;
         isAudioLoadingRef.current = true;
         setPlayingTrackId(targetTrack.id);
         setIsAudioLoading(true);
@@ -893,15 +1035,20 @@ function TrackCodeWorkspace() {
           audio.src = cachedPreview;
           loadedAudioTrackIdRef.current = targetTrack.id;
           loadedAudioSrcRef.current = cachedPreview;
+          hasAudioSignalRef.current = false;
           setLoadedTrackId(targetTrack.id);
           setAudioProgress(0);
         }
 
+        if (audioContextRef.current?.state === 'suspended') {
+          void audioContextRef.current.resume().catch(() => {});
+        }
         void audio.play().catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') {
             return;
           }
           if (playingTrackIdRef.current === targetTrack.id) {
+            playingTrackIdRef.current = null;
             isAudioLoadingRef.current = false;
             setPlayingTrackId(null);
             setIsAudioLoading(false);
@@ -911,9 +1058,7 @@ function TrackCodeWorkspace() {
       }
 
       if (cachedPreview === null) {
-        isAudioLoadingRef.current = false;
-        setPlayingTrackId(null);
-        setIsAudioLoading(false);
+        stopAudioPreview();
         return;
       }
 
@@ -924,6 +1069,7 @@ function TrackCodeWorkspace() {
       loadedAudioTrackIdRef.current = null;
       setLoadedTrackId(null);
       setAudioProgress(0);
+      playingTrackIdRef.current = targetTrack.id;
       isAudioLoadingRef.current = true;
       setPlayingTrackId(targetTrack.id);
       setIsAudioLoading(true);
@@ -1001,8 +1147,12 @@ function TrackCodeWorkspace() {
           audio.src = resolvedPreviewUrl;
           loadedAudioTrackIdRef.current = targetTrack.id;
           loadedAudioSrcRef.current = resolvedPreviewUrl;
+          hasAudioSignalRef.current = false;
           setLoadedTrackId(targetTrack.id);
 
+          if (audioContextRef.current?.state === 'suspended') {
+            void audioContextRef.current.resume().catch(() => {});
+          }
           void audio.play().catch((err) => {
             if (err instanceof DOMException && err.name === 'AbortError') {
               return;
@@ -1025,7 +1175,7 @@ function TrackCodeWorkspace() {
           }
         });
     },
-    [activeInspectTrack?.id, getOrCreateAudio]
+    [activeInspectTrack?.id, ensureAudioAnalyser, getOrCreateAudio, stopAudioPreview]
   );
 
   const handleToggleInspectorPreview = useCallback(() => {
@@ -1168,6 +1318,10 @@ function TrackCodeWorkspace() {
 
   const handleSelectTrack = useCallback(
     (track: TrackItem, copied: boolean) => {
+      if (playingTrackIdRef.current !== null && track.id !== playingTrackIdRef.current) {
+        stopAudioPreview();
+      }
+
       const cachedIsrc = track.isrc ?? getCachedTrackIsrc(track.id);
       const effectiveTrack =
         typeof cachedIsrc === 'string' && cachedIsrc && !track.isrc
@@ -1195,7 +1349,7 @@ function TrackCodeWorkspace() {
 
       fetchIsrcOnDemand(effectiveTrack);
     },
-    [showToast, fetchIsrcOnDemand]
+    [showToast, fetchIsrcOnDemand, stopAudioPreview]
   );
 
   const handlePasteFromClipboard = useCallback(async () => {
@@ -1237,15 +1391,24 @@ function TrackCodeWorkspace() {
     showToast('Recent history cleared', 'info');
   }, [showToast]);
 
-  const handleSearchOtherVersions = useCallback((track: TrackItem) => {
-    setSheetTrack(null);
-    const nextQuery = `${track.name} ${track.primaryArtist}`.trim();
-    setQuery(nextQuery);
-  }, []);
+  const handleSearchOtherVersions = useCallback(
+    (track: TrackItem) => {
+      if (playingTrackIdRef.current !== null && track.id === playingTrackIdRef.current) {
+        stopAudioPreview();
+      }
+      setSheetTrack(null);
+      const nextQuery = `${track.name} ${track.primaryArtist}`.trim();
+      setQuery(nextQuery);
+    },
+    [stopAudioPreview]
+  );
 
   const handleCloseSheet = useCallback(() => {
+    if (sheetTrack?.id && playingTrackIdRef.current === sheetTrack.id) {
+      stopAudioPreview();
+    }
     setSheetTrack(null);
-  }, []);
+  }, [sheetTrack?.id, stopAudioPreview]);
 
   const handleInspectorCopied = useCallback(
     (isrc: string, copiedTrack?: TrackItem) => {
@@ -1756,6 +1919,7 @@ function TrackCodeWorkspace() {
                     : 0
                 }
                 onTogglePreview={handleToggleInspectorPreview}
+                getAudioGainMultiplier={getAudioGainMultiplier}
                 onCopied={handleInspectorCopied}
                 onCopyFailed={handleInspectorCopyFailed}
                 onSearchOtherVersions={handleSearchOtherVersions}
@@ -1805,6 +1969,7 @@ function TrackCodeWorkspace() {
                 ? audioProgress
                 : 0
             }
+            getAudioGainMultiplier={getAudioGainMultiplier}
             onTogglePreview={handleToggleInspectorPreview}
             onClose={handleCloseSheet}
             onCopied={handleInspectorCopied}

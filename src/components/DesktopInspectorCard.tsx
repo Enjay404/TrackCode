@@ -10,6 +10,7 @@ import {
 import { extractDominantColorRgb } from '../utils/dominantColor';
 import { IOS_EASE, SPRING_BUTTON } from '../utils/motionConfig';
 import { copyIsrcVerified, formatIsrcCode } from '../utils/spotifyInput';
+import { AcousticWaveform } from './AcousticWaveform';
 
 const PREVIEW_RING_RADIUS = 18.9;
 const PREVIEW_RING_CIRCUMFERENCE = 2 * Math.PI * PREVIEW_RING_RADIUS;
@@ -23,6 +24,7 @@ interface DesktopInspectorCardProps {
   isAudioPlaying?: boolean;
   isAudioLoading?: boolean;
   audioProgress?: number;
+  getAudioGainMultiplier?: () => number;
   onTogglePreview?: () => void;
   onCopied: (isrc: string, copiedTrack?: TrackItem) => void;
   onCopyFailed?: () => void;
@@ -41,6 +43,7 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
   isAudioPlaying = false,
   isAudioLoading = false,
   audioProgress = 0,
+  getAudioGainMultiplier,
   onTogglePreview,
   onCopied,
   onCopyFailed,
@@ -280,25 +283,35 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
               />
             </svg>
           </p>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[12px] text-[#8E8E93]">
-            <span
-              className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.04em]"
-              style={ALBUM_TYPE_BADGE_STYLE[track.albumType]}
-            >
-              {ALBUM_TYPE_LABEL[track.albumType]}
-            </span>
-            {track.releaseYear && (
-              <span className="tabular-nums font-medium text-[#8E8E93]">
-                {track.releaseYear}
-              </span>
-            )}
-            {track.explicit && (
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[12px] text-[#8E8E93]">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.02em]"
-                style={EXPLICIT_BADGE_STYLE}
+                className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.04em]"
+                style={ALBUM_TYPE_BADGE_STYLE[track.albumType]}
               >
-                Explicit
+                {ALBUM_TYPE_LABEL[track.albumType]}
               </span>
+              {track.releaseYear && (
+                <span className="tabular-nums font-medium text-[#8E8E93]">
+                  {track.releaseYear}
+                </span>
+              )}
+              {track.explicit && (
+                <span
+                  className="inline-flex h-[18px] items-center rounded-[4px] px-1.5 text-[10px] font-semibold leading-none tracking-[0.02em]"
+                  style={EXPLICIT_BADGE_STYLE}
+                >
+                  Explicit
+                </span>
+              )}
+            </div>
+            {(previewUrl || isAudioPlaying || isAudioLoading || audioProgress > 0) && (
+              <AcousticWaveform
+                isPlaying={isAudioPlaying}
+                isLoading={isAudioLoading}
+                hasProgress={audioProgress > 0}
+                getGainMultiplier={getAudioGainMultiplier}
+              />
             )}
           </div>
         </div>
