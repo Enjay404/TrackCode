@@ -240,6 +240,85 @@
   animation: updated-shimmer 6s ease-in-out infinite;
 }
 
+@keyframes promo-card-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-2deg);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0) rotate(-2deg);
+  }
+}
+
+@keyframes promo-diagonal-sweep {
+  0% {
+    transform: translate3d(-120%, 0, 0);
+  }
+  45%,
+  100% {
+    transform: translate3d(140%, 0, 0);
+  }
+}
+
+@keyframes promo-eq-bar {
+  0%,
+  100% {
+    transform: scaleY(0.36);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes promo-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes promo-chevron-pulse {
+  0%,
+  100% {
+    transform: translate3d(0, -1px, 0);
+    opacity: 0.88;
+  }
+  50% {
+    transform: translate3d(0, 2px, 0);
+    opacity: 1;
+  }
+}
+
+.animate-promo-float {
+  animation: promo-card-float 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-promo-sweep {
+  animation: promo-diagonal-sweep 4.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform;
+}
+
+.animate-promo-eq {
+  transform-origin: bottom;
+  animation: promo-eq-bar 0.9s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-promo-cursor {
+  animation: promo-cursor-blink 1.05s steps(2, start) infinite;
+  will-change: opacity;
+}
+
+.animate-promo-chevron {
+  animation: promo-chevron-pulse 2.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton-shimmer::after,
   .trackcode-isrc-shimmer,
@@ -249,8 +328,17 @@
   .animate-card-in,
   .animate-sweep-enter,
   .animate-sweep-tap,
-  .animate-updated-shimmer {
+  .animate-updated-shimmer,
+  .animate-promo-float,
+  .animate-promo-sweep,
+  .animate-promo-eq,
+  .animate-promo-cursor,
+  .animate-promo-chevron {
     animation: none;
+  }
+
+  .animate-promo-float {
+    transform: rotate(-2deg);
   }
 
   .animate-updated-shimmer {
@@ -262,6 +350,7 @@
 
   .trackcode-light-beam,
   .trackcode-isrc-shimmer,
+  .animate-promo-sweep,
   .group:hover .trackcode-sweep-hover {
     display: none;
     transition: none;
