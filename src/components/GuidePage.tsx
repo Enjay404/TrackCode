@@ -836,7 +836,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
         </section>
       </main>
 
-      {!isCleanMode && <FooterDock currentPath="/guide" onNavigate={onNavigate} />}
+      {!isCleanMode && <FooterDock />}
 
       {typeof document !== 'undefined' && fullscreenModal
         ? createPortal(fullscreenModal, document.body)

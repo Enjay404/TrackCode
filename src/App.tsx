@@ -1,7 +1,6 @@
 import { Analytics } from '@vercel/analytics/react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
-  BookOpen,
   ChevronDown,
   ChevronUp,
   ClipboardPaste,
@@ -15,7 +14,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  type MouseEvent,
   type ReactNode,
   Suspense,
   lazy,
@@ -318,7 +316,7 @@ function deriveApiStatus(meta: {
   };
 }
 
-function TrackCodeWorkspace({ onNavigate }: { onNavigate: (path: string) => void }) {
+function TrackCodeWorkspace() {
   const isDesktop = useIsDesktop();
   const [query, setQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -1380,18 +1378,6 @@ function TrackCodeWorkspace({ onNavigate }: { onNavigate: (path: string) => void
             <div className="hidden lg:block">
               <ApiStatusPill status={apiStatus} />
             </div>
-            <a
-              href="/guide"
-              onClick={(e: MouseEvent<HTMLAnchorElement>) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                e.preventDefault();
-                onNavigate('/guide');
-              }}
-              className="liquid-glass hidden min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13px] font-medium text-[#D1D1D6] transition-colors hover:bg-white/[0.1] hover:text-white active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 lg:inline-flex"
-            >
-              <BookOpen className="h-3.5 w-3.5 text-[#30D158]" aria-hidden="true" />
-              <span>Guide</span>
-            </a>
             <motion.button
               type="button"
               onClick={() => void handleShareApp()}
@@ -1779,7 +1765,7 @@ function TrackCodeWorkspace({ onNavigate }: { onNavigate: (path: string) => void
         </main>
 
         {/* Footer: Fixed bottom dock on Mobile (<1024px), clean centered footer under workspace on Desktop (lg+) */}
-        <FooterDock currentPath="/" onNavigate={onNavigate} />
+        <FooterDock />
       </div>
 
       {/* Offline Status Indicator */}
@@ -1879,7 +1865,7 @@ export default function App() {
           <GuidePage onNavigate={navigateTo} />
         </Suspense>
       ) : (
-        <TrackCodeWorkspace onNavigate={navigateTo} />
+        <TrackCodeWorkspace />
       )}
       <Analytics />
     </MotionConfig>
