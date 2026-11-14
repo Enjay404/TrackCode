@@ -52,7 +52,7 @@ export function PWAInstallButton() {
       <AnimatePresence>
         {showIOSGuide && (
           <div
-            className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center sm:p-4"
+            className="fixed inset-0 z-[9999] flex items-end justify-center pt-[calc(env(safe-area-inset-top,0px)+12px)] sm:items-center sm:p-4"
             role="dialog"
             aria-modal="true"
             aria-label="Add TrackCode to Home Screen"

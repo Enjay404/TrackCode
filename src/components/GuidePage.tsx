@@ -1682,7 +1682,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
 
   const fullscreenModal = activeFullscreenSlide ? (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090B] p-3 sm:p-6"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090B] p-3 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={`Fullscreen 4:5 slide: ${activeFullscreenSlide.headline}`}
@@ -1690,7 +1690,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
     >
       {!isCleanMode && (
         <div
-          className="fixed top-4 right-4 z-20 flex items-center gap-2"
+          className="fixed top-[calc(env(safe-area-inset-top,0px)+12px)] right-4 z-20 flex items-center gap-2"
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -1754,7 +1754,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
 
       {/* Top Navigation Bar (Hidden in Screenshot View) */}
       {!isCleanMode && (
-        <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#09090B]/95">
+        <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#09090B]/95 pt-[env(safe-area-inset-top,0px)]">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2.5 px-4 py-3 sm:px-6">
             <a
               href="/"
@@ -1804,7 +1804,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
         <button
           type="button"
           onClick={() => setIsCleanMode(false)}
-          className="liquid-glass-pill fixed right-4 bottom-4 z-40 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium text-white/80 opacity-65 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          className="liquid-glass-pill fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] z-40 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium text-white/80 opacity-65 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
         >
           <EyeOff className="h-3.5 w-3.5 text-[#30D158]" />
           <span>Exit Screenshot View</span>

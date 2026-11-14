@@ -18,7 +18,7 @@ export const DynamicIslandToast = memo(function DynamicIslandToast({
   return (
     <div
       className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4"
-      style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
       aria-live="polite"
       aria-atomic="true"
     >

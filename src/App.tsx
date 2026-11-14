@@ -1503,10 +1503,16 @@ function TrackCodeWorkspace() {
 
   return (
     <div className="relative min-h-[100dvh] bg-black text-white">
+      {/* Top Status-Bar / Dynamic Island Fade Shield (zero backdrop-filter) */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+16px)] bg-gradient-to-b from-[#09090B] via-[#09090B]/95 to-transparent lg:hidden"
+      />
+
       <DynamicIslandToast toast={toast} />
 
       <div
-        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black lg:max-w-5xl lg:px-8"
+        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0"
         style={{
           overflow: 'clip',
         }}
@@ -1523,10 +1529,7 @@ function TrackCodeWorkspace() {
         />
 
         {/* Responsive Header: Mobile Large Title / Desktop Top Bar */}
-        <header
-          className="relative z-10 flex items-start justify-between px-4 pb-3 lg:items-center lg:px-0 lg:pt-8 lg:pb-6"
-          style={{ paddingTop: isDesktop ? undefined : 'max(18px, env(safe-area-inset-top))' }}
-        >
+        <header className="relative z-10 flex items-start justify-between px-4 pt-1 pb-3 lg:items-center lg:px-0 lg:pt-8 lg:pb-6">
           <div className="flex flex-col items-start">
             <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
               TrackCode
@@ -1560,8 +1563,8 @@ function TrackCodeWorkspace() {
           <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-7">
             {/* Left Column (Desktop col-span-7) / Mobile Full Column */}
             <div className="lg:col-span-7">
-              {/* Spotlight-Style Search Bar (Sticky on Mobile, Static inside Left Column on Desktop) */}
-              <div className="sticky top-0 z-20 px-4 py-2 lg:static lg:mb-5 lg:px-0 lg:py-0">
+              {/* Spotlight-Style Search Bar (Sticky on Mobile with Dynamic Island top bridge, Static on Desktop) */}
+              <div className="sticky top-[calc(env(safe-area-inset-top,0px)+8px)] z-20 px-4 py-2 before:pointer-events-none before:fixed before:inset-x-0 before:top-0 before:-z-10 before:h-[calc(env(safe-area-inset-top,0px)+8px)] before:bg-[#09090B] before:content-[''] lg:static lg:mb-5 lg:px-0 lg:py-0 lg:before:hidden">
                 <form
                   onSubmit={handleSearchSubmit}
                   className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"

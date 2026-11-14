@@ -18,10 +18,7 @@ export function MaintenancePage() {
 
       <div className="relative z-10 mx-auto flex w-full max-w-[480px] flex-1 flex-col px-4 pb-24 lg:pb-6">
         {/* Centered TrackCode Header */}
-        <header
-          className="flex flex-col items-center pb-5 text-center"
-          style={{ paddingTop: 'max(26px, env(safe-area-inset-top))' }}
-        >
+        <header className="flex flex-col items-center pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-5 text-center">
           <img
             src="/assets/aistudio/logo_f0aa9f50.jpg"
             alt="TrackCode logo"
