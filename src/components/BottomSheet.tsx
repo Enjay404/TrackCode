@@ -30,8 +30,8 @@ const SPRING_BUTTON = {
 };
 
 const IOS_EASE = [0.22, 1, 0.36, 1] as const;
-const SHEET_DURATION_MS = 280;
-const AUTO_COPY_RESET_MS = 950;
+const SHEET_DURATION_MS = 250;
+const AUTO_COPY_RESET_MS = 750;
 const MANUAL_COPY_RESET_MS = 1000;
 
 export const BottomSheet = memo(function BottomSheet({
@@ -50,6 +50,8 @@ export const BottomSheet = memo(function BottomSheet({
   const activeTrack = track ?? lastTrack;
   const artSrc = activeTrack?.albumArt.medium || activeTrack?.albumArt.large || null;
 
+  const [isRendered, setIsRendered] = useState<boolean>(isOpen);
+  const [isVisible, setIsVisible] = useState<boolean>(isOpen);
   const [glowRgb, setGlowRgb] = useState<string>('110, 110, 128');
   const [glowReady, setGlowReady] = useState(false);
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
@@ -76,6 +78,32 @@ export const BottomSheet = memo(function BottomSheet({
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
 
   useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      let raf2 = 0;
+      const raf1 = window.requestAnimationFrame(() => {
+        raf2 = window.requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
+      });
+      return () => {
+        window.cancelAnimationFrame(raf1);
+        window.cancelAnimationFrame(raf2);
+      };
+    }
+
+    setIsVisible(false);
+    const hideTimer = window.setTimeout(() => {
+      setIsRendered(false);
+      setGlowReady(false);
+    }, SHEET_DURATION_MS + 20);
+
+    return () => {
+      window.clearTimeout(hideTimer);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     return () => {
       if (copyTimerRef.current) {
         window.clearTimeout(copyTimerRef.current);
@@ -84,7 +112,6 @@ export const BottomSheet = memo(function BottomSheet({
     };
   }, []);
 
-  // Defer dominant color extraction until after the 280ms GPU slide-up finishes
   useEffect(() => {
     if (!track) return;
 
@@ -236,31 +263,27 @@ export const BottomSheet = memo(function BottomSheet({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center"
+      className="fixed inset-0 z-40 items-end justify-center"
       role="dialog"
       aria-modal={isOpen}
       aria-hidden={!isOpen}
       aria-label={activeTrack?.name || 'Track details'}
-      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
+      style={{
+        display: isRendered ? 'flex' : 'none',
+        pointerEvents: isVisible ? 'auto' : 'none',
+      }}
     >
-      {/* Pre-mounted modal dimming overlay (zero backdrop-filter) */}
+      {/* Translucent modal backdrop (zero backdrop-filter) */}
       <div
         onClick={isOpen ? onClose : undefined}
-        className="fixed inset-0 bg-black/65"
+        className="fixed inset-0 bg-black/70"
         style={{
-          opacity: isOpen ? 1 : 0,
-          visibility: isOpen ? 'visible' : 'hidden',
-          pointerEvents: isOpen ? 'auto' : 'none',
-          willChange: 'opacity',
-          backfaceVisibility: 'hidden',
-          contain: 'strict',
-          transition: isOpen
-            ? `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0ms`
-            : `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear ${SHEET_DURATION_MS}ms`,
+          opacity: isVisible ? 1 : 0,
+          transition: `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
         }}
       />
 
-      {/* Permanently mounted warm GPU bottom sheet */}
+      {/* Lean GPU-composited bottom sheet */}
       <div
         ref={sheetRef}
         onPointerDown={handlePointerDown}
@@ -268,28 +291,21 @@ export const BottomSheet = memo(function BottomSheet({
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
         style={{
-          transform: isOpen ? 'translate3d(0, 0, 0)' : 'translate3d(0, 105%, 0)',
-          opacity: isOpen ? 1 : 0,
-          visibility: isOpen ? 'visible' : 'hidden',
-          pointerEvents: isOpen ? 'auto' : 'none',
+          transform: isVisible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+          opacity: isVisible ? 1 : 0,
           paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-          background: 'rgba(28, 28, 30, 0.88)',
-          backdropFilter: 'blur(12px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-          willChange: 'transform, opacity',
-          backfaceVisibility: 'hidden',
-          contain: 'layout style paint',
+          background:
+            'linear-gradient(180deg, rgba(34, 34, 38, 0.98) 0%, rgba(24, 24, 28, 0.96) 100%)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.14)',
           touchAction: 'pan-x',
-          transition: isOpen
-            ? `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0ms`
-            : `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear ${SHEET_DURATION_MS}ms`,
+          transition: `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
         }}
-        className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] border-t border-white/10 px-5 pt-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
+        className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] px-5 pt-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
       >
         {/* Ambient radial glow tinted with album cover dominant color */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full transition-opacity duration-400 ease-out"
+          className="pointer-events-none absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full transition-opacity duration-300 ease-out"
           style={{
             opacity: glowReady ? 0.3 : 0.12,
             background: `radial-gradient(circle, rgba(${glowRgb}, 0.85) 0%, rgba(${glowRgb}, 0.24) 45%, transparent 72%)`,
@@ -411,7 +427,7 @@ export const BottomSheet = memo(function BottomSheet({
               aria-label={`Copy ${formattedIsrc}`}
               className="group relative flex w-full cursor-pointer items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 hover:bg-[#323234] active:bg-[#3A3A3C] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
             >
-              {/* Subtle GPU-composited #30D158 emerald border glow overlay */}
+              {/* Subtle #30D158 emerald border glow overlay */}
               <motion.div
                 key={`pulse-${pulseCount}`}
                 aria-hidden="true"
@@ -466,7 +482,6 @@ export const BottomSheet = memo(function BottomSheet({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.96 }}
                     transition={{ duration: 0.16, ease: IOS_EASE }}
-                    style={{ willChange: 'transform, opacity' }}
                     className="inline-flex items-center justify-center gap-2"
                   >
                     <svg
@@ -493,7 +508,6 @@ export const BottomSheet = memo(function BottomSheet({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.96 }}
                     transition={{ duration: 0.18, ease: IOS_EASE }}
-                    style={{ willChange: 'transform, opacity' }}
                     className="inline-flex items-center justify-center gap-2"
                   >
                     <Copy className="h-4 w-4 stroke-[2.2]" />
@@ -554,16 +568,15 @@ export const BottomSheet = memo(function BottomSheet({
 
           <div
             aria-hidden={!guideOpen}
-            className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`grid transition-[grid-template-rows] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               guideOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
             }`}
           >
             <div className="min-h-0 overflow-hidden">
               <div
-                className={`transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                className={`transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
                   guideOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
                 }`}
-                style={{ willChange: 'transform, opacity' }}
               >
                 <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
                   <li className="flex gap-2.5">

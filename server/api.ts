@@ -2,7 +2,15 @@ import express, { type Request, type Response } from 'express';
 import type { AlbumType, TrackItem } from '../src/types/track.js';
 
 const UPSTREAM_TIMEOUT_MS = 8000;
-const POPULAR_HITS_TTL_MS = 30 * 60 * 1000;
+
+class SpotifyRateLimitError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('SPOTIFY_RATE_LIMITED');
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 interface TokenCache {
   accessToken: string;
@@ -46,6 +54,30 @@ class BoundedTtlCache<T> {
 
 let tokenCache: TokenCache | null = null;
 let inflightTokenPromise: Promise<string> | null = null;
+let spotifyRateLimitedUntil = 0;
+
+function parseRetryAfterSeconds(res: globalThis.Response): number {
+  const header = res.headers.get('retry-after');
+  const parsed = header ? Number.parseInt(header, 10) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.min(parsed, 300);
+  }
+  return 30;
+}
+
+function assertNotRateLimited(): void {
+  const now = Date.now();
+  if (now < spotifyRateLimitedUntil) {
+    const remainingSec = Math.max(1, Math.ceil((spotifyRateLimitedUntil - now) / 1000));
+    throw new SpotifyRateLimitError(remainingSec);
+  }
+}
+
+function recordRateLimit(res: globalThis.Response): never {
+  const retryAfterSec = parseRetryAfterSeconds(res);
+  spotifyRateLimitedUntil = Date.now() + retryAfterSec * 1000;
+  throw new SpotifyRateLimitError(retryAfterSec);
+}
 
 function getSpotifyCredentials(): { clientId: string; clientSecret: string } {
   const clientId = process.env.SPOTIFY_CLIENT_ID?.trim() || '';
@@ -64,6 +96,8 @@ async function fetchSpotifyToken(forceRefresh = false): Promise<string> {
     return tokenCache.accessToken;
   }
 
+  assertNotRateLimited();
+
   if (!forceRefresh && inflightTokenPromise) {
     return inflightTokenPromise;
   }
@@ -81,6 +115,10 @@ async function fetchSpotifyToken(forceRefresh = false): Promise<string> {
       body: new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
+
+    if (response.status === 429) {
+      recordRateLimit(response);
+    }
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -103,6 +141,8 @@ async function fetchSpotifyToken(forceRefresh = false): Promise<string> {
 }
 
 async function spotifyGet<T>(url: string): Promise<T> {
+  assertNotRateLimited();
+
   let token = await fetchSpotifyToken(false);
   let res = await fetch(url, {
     headers: {
@@ -119,6 +159,10 @@ async function spotifyGet<T>(url: string): Promise<T> {
       },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
+  }
+
+  if (res.status === 429) {
+    recordRateLimit(res);
   }
 
   if (!res.ok) {
@@ -355,16 +399,90 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
 
-const searchCache = new BoundedTtlCache<TrackItem[]>(200, 5 * 60 * 1000);
-const trackCache = new BoundedTtlCache<TrackItem>(300, 30 * 60 * 1000);
-let quickTryCache: { tracks: TrackItem[]; expiresAt: number } | null = null;
-let inflightQuickTryPromise: Promise<TrackItem[]> | null = null;
+const searchCache = new BoundedTtlCache<TrackItem[]>(250, 15 * 60 * 1000);
+const trackCache = new BoundedTtlCache<TrackItem>(300, 60 * 60 * 1000);
 
-const QUICK_TRY_QUERIES = [
-  'track:"Blinding Lights" artist:"The Weeknd"',
-  'track:"Timeless" artist:"The Weeknd"',
-  'track:"Espresso" artist:"Sabrina Carpenter"',
-  'track:"BIRDS OF A FEATHER" artist:"Billie Eilish"',
+const POPULAR_HITS_TRACKS: TrackItem[] = [
+  {
+    id: '0VjIjW4GlUZAMYd2vXMi3b',
+    name: 'Blinding Lights',
+    artists: 'The Weeknd',
+    primaryArtist: 'The Weeknd',
+    albumName: 'After Hours',
+    albumType: 'album',
+    releaseYear: '2020',
+    explicit: false,
+    albumArt: {
+      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e028863bc11d2aa12b54f5aeb36',
+      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e028863bc11d2aa12b54f5aeb36',
+    },
+    isrc: 'USUG11904206',
+    spotifyUrl: 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b',
+  },
+  {
+    id: '2qSkIjg1o9h3YT9RAgYN75',
+    name: 'Espresso',
+    artists: 'Sabrina Carpenter',
+    primaryArtist: 'Sabrina Carpenter',
+    albumName: 'Espresso',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02659cd4673230913b3918e0d5',
+      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02659cd4673230913b3918e0d5',
+    },
+    isrc: 'USUM72403305',
+    spotifyUrl: 'https://open.spotify.com/track/2qSkIjg1o9h3YT9RAgYN75',
+  },
+  {
+    id: '6dOtVTDdiauQNBQEDOtlAB',
+    name: 'BIRDS OF A FEATHER',
+    artists: 'Billie Eilish',
+    primaryArtist: 'Billie Eilish',
+    albumName: 'HIT ME HARD AND SOFT',
+    albumType: 'album',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e0271d62ea7ea8a5be92d3c1f62',
+      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e0271d62ea7ea8a5be92d3c1f62',
+    },
+    isrc: 'USUM72401994',
+    spotifyUrl: 'https://open.spotify.com/track/6dOtVTDdiauQNBQEDOtlAB',
+  },
+  {
+    id: '0FIDCNYYjNvPVimz5icugS',
+    name: 'Timeless',
+    artists: 'The Weeknd, Playboi Carti',
+    primaryArtist: 'The Weeknd',
+    albumName: 'Timeless',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02de79f330bc297af3fae736da',
+      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02de79f330bc297af3fae736da',
+    },
+    isrc: 'USUG12406455',
+    spotifyUrl: 'https://open.spotify.com/track/0FIDCNYYjNvPVimz5icugS',
+  },
+  {
+    id: '5cF0dROlMOK5uNZtivgu50',
+    name: 'Attention',
+    artists: 'Charlie Puth',
+    primaryArtist: 'Charlie Puth',
+    albumName: 'Voicenotes',
+    albumType: 'album',
+    releaseYear: '2018',
+    explicit: false,
+    albumArt: {
+      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02897f73256b9128a9d70eaf66',
+      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02897f73256b9128a9d70eaf66',
+    },
+    isrc: 'USAT21700928',
+    spotifyUrl: 'https://open.spotify.com/track/5cF0dROlMOK5uNZtivgu50',
+  },
 ];
 
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -375,47 +493,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, configured });
 });
 
-async function handlePopularHits(_req: Request, res: Response) {
-  const now = Date.now();
-  if (quickTryCache && quickTryCache.expiresAt > now) {
-    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
-    res.json({ tracks: quickTryCache.tracks });
-    return;
-  }
-
-  try {
-    if (!inflightQuickTryPromise) {
-      inflightQuickTryPromise = Promise.all(
-        QUICK_TRY_QUERIES.map(async (q) => {
-          const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`;
-          const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(url);
-          const first = data.tracks?.items?.[0];
-          return first && first.id ? normalizeTrack(first) : null;
-        })
-      )
-        .then((results) => {
-          const tracks = results.filter((t): t is TrackItem => t !== null);
-          if (tracks.length > 0) {
-            quickTryCache = {
-              tracks,
-              expiresAt: Date.now() + POPULAR_HITS_TTL_MS,
-            };
-          }
-          return tracks;
-        })
-        .finally(() => {
-          inflightQuickTryPromise = null;
-        });
-    }
-
-    const tracks = await inflightQuickTryPromise;
-    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
-    res.json({ tracks });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Popular Hits fetch error:', message);
-    res.json({ tracks: quickTryCache?.tracks ?? [] });
-  }
+function handlePopularHits(_req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+  res.json({ tracks: POPULAR_HITS_TRACKS });
 }
 
 app.get('/api/quick-try', handlePopularHits);
@@ -429,25 +509,61 @@ app.get('/api/search', async (req: Request, res: Response) => {
     return;
   }
 
-  const cacheKey = query.toLowerCase();
-  const cached = searchCache.get(cacheKey);
+  const directTrackId = extractTrackIdFromText(query);
+  const normalizedQuery = query.toLowerCase();
+  const cacheControlHeader = directTrackId
+    ? 'public, s-maxage=86400, stale-while-revalidate=604800'
+    : 'public, s-maxage=3600, stale-while-revalidate=86400';
+
+  const cached = searchCache.get(normalizedQuery);
   if (cached) {
-    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    res.json({ tracks: cached, query });
+    res.setHeader('Cache-Control', cacheControlHeader);
+    res.json({ tracks: cached, query: normalizedQuery });
     return;
   }
 
   try {
-    const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=10`;
+    if (directTrackId) {
+      const cachedTrack = trackCache.get(directTrackId);
+      if (cachedTrack) {
+        const tracks = [cachedTrack];
+        searchCache.set(normalizedQuery, tracks);
+        res.setHeader('Cache-Control', cacheControlHeader);
+        res.json({ tracks, query: normalizedQuery });
+        return;
+      }
+
+      const rawTrack = await spotifyGet<SpotifyRawTrack>(
+        `https://api.spotify.com/v1/tracks/${directTrackId}`
+      );
+      const track = normalizeTrack(rawTrack);
+      trackCache.set(directTrackId, track);
+      const tracks = [track];
+      searchCache.set(normalizedQuery, tracks);
+      res.setHeader('Cache-Control', cacheControlHeader);
+      res.json({ tracks, query: normalizedQuery });
+      return;
+    }
+
+    const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(normalizedQuery)}&type=track&limit=10`;
     const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(searchUrl);
 
     const items = data.tracks?.items ?? [];
     const tracks = items.filter((item) => item && item.id).map(normalizeTrack);
-    searchCache.set(cacheKey, tracks);
+    searchCache.set(normalizedQuery, tracks);
 
-    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
-    res.json({ tracks, query });
+    res.setHeader('Cache-Control', cacheControlHeader);
+    res.json({ tracks, query: normalizedQuery });
   } catch (error) {
+    if (error instanceof SpotifyRateLimitError) {
+      res.setHeader('Retry-After', String(error.retryAfterSeconds));
+      res.status(429).json({
+        error: 'Too many searches right now. Please wait a few seconds and try again.',
+        code: 'RATE_LIMITED',
+        retryAfter: error.retryAfterSeconds,
+      });
+      return;
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (message === 'SPOTIFY_CREDENTIALS_MISSING') {
       res.status(503).json({
@@ -490,7 +606,7 @@ app.get('/api/track', async (req: Request, res: Response) => {
 
     const cachedTrack = trackCache.get(trackId);
     if (cachedTrack) {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
       res.json({ track: cachedTrack });
       return;
     }
@@ -498,9 +614,18 @@ app.get('/api/track', async (req: Request, res: Response) => {
     const rawTrack = await spotifyGet<SpotifyRawTrack>(`https://api.spotify.com/v1/tracks/${trackId}`);
     const track = normalizeTrack(rawTrack);
     trackCache.set(trackId, track);
-    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
     res.json({ track });
   } catch (error) {
+    if (error instanceof SpotifyRateLimitError) {
+      res.setHeader('Retry-After', String(error.retryAfterSeconds));
+      res.status(429).json({
+        error: 'Too many searches right now. Please wait a few seconds and try again.',
+        code: 'RATE_LIMITED',
+        retryAfter: error.retryAfterSeconds,
+      });
+      return;
+    }
     const errWithStatus = error as Error & { status?: number };
     const message = errWithStatus.message || 'Unknown error';
     if (message === 'SPOTIFY_CREDENTIALS_MISSING') {

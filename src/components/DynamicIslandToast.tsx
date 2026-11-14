@@ -26,18 +26,15 @@ export const DynamicIslandToast = memo(function DynamicIslandToast({
         {toast && (
           <motion.div
             key={toast.id}
-            initial={{ opacity: 0, y: -48, scale: 0.92 }}
+            initial={{ opacity: 0, y: -44, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -48, scale: 0.92 }}
+            exit={{ opacity: 0, y: -44, scale: 0.94 }}
             transition={{
-              duration: 0.28,
+              duration: 0.25,
               ease: [0.22, 1, 0.36, 1],
             }}
-            style={{
-              willChange: 'transform, opacity',
-              contain: 'layout style paint',
-            }}
-            className="pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-full border border-white/15 bg-[#1C1C1E]/95 px-4 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.65)]"
+            style={{ contain: 'layout style paint' }}
+            className="pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-full border border-white/15 bg-[#1C1C20]/95 px-4 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.65)]"
           >
             {toast.tone === 'success' ? (
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#30D158]/20 text-[#30D158]">

@@ -22,9 +22,11 @@ import type { SearchApiResponse, TrackApiResponse, TrackItem } from './types/tra
 import {
   clearRecentTracksStorage,
   formatIsrcCode,
+  getCachedSearchResults,
   isSpotifyTrackLink,
   loadRecentTracks,
   saveRecentTrack,
+  setCachedSearchResults,
   syncCopyIsrc,
 } from './utils/spotifyInput';
 
@@ -115,12 +117,11 @@ const FooterDock = memo(function FooterDock() {
           transition={SPRING_BUTTON}
           className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
-            background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            background:
+              'linear-gradient(180deg, rgba(36, 36, 40, 0.94) 0%, rgba(24, 24, 28, 0.96) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.14)',
             boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+              'inset 0 1px 0.5px rgba(255, 255, 255, 0.18), 0 8px 24px rgba(0, 0, 0, 0.6)',
           }}
         >
           <span>Made with ❤️ by</span>
@@ -135,12 +136,11 @@ const FooterDock = memo(function FooterDock() {
           transition={SPRING_BUTTON}
           className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
-            background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(12px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            background:
+              'linear-gradient(180deg, rgba(36, 36, 40, 0.94) 0%, rgba(24, 24, 28, 0.96) 100%)',
+            border: '1px solid rgba(255, 255, 255, 0.14)',
             boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+              'inset 0 1px 0.5px rgba(255, 255, 255, 0.18), 0 8px 24px rgba(0, 0, 0, 0.6)',
           }}
         >
           <span
@@ -163,6 +163,7 @@ export default function App() {
   const [results, setResults] = useState<TrackItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRateLimited, setIsRateLimited] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
   const [quickTryTracks, setQuickTryTracks] = useState<TrackItem[]>([]);
@@ -243,6 +244,21 @@ export default function App() {
 
   const executeLookup = useCallback(
     async (rawInput: string, mode: 'link' | 'search') => {
+      if (mode === 'search') {
+        const cached = getCachedSearchResults(rawInput);
+        if (cached) {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          setResults(cached);
+          setErrorMessage(null);
+          setIsRateLimited(false);
+          setHasSearched(true);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -251,6 +267,7 @@ export default function App() {
 
       setIsLoading(true);
       setErrorMessage(null);
+      setIsRateLimited(false);
 
       try {
         if (mode === 'link') {
@@ -259,10 +276,14 @@ export default function App() {
           });
           const payload = (await res.json()) as TrackApiResponse & { error?: string };
           if (!res.ok) {
+            if (res.status === 429 || res.status >= 500) {
+              setIsRateLimited(true);
+            }
             throw new Error(payload.error || 'Could not load that Spotify track.');
           }
 
           const track = payload.track;
+          (document.activeElement as HTMLElement | null)?.blur();
           setResults([track]);
           setHasSearched(true);
           setSelectedTrack(track);
@@ -283,9 +304,13 @@ export default function App() {
           });
           const payload = (await res.json()) as SearchApiResponse & { error?: string };
           if (!res.ok) {
+            if (res.status === 429 || res.status >= 500) {
+              setIsRateLimited(true);
+            }
             throw new Error(payload.error || 'Unable to search Spotify right now.');
           }
 
+          setCachedSearchResults(rawInput, payload.tracks);
           setResults(payload.tracks);
           setHasSearched(true);
         }
@@ -321,6 +346,7 @@ export default function App() {
       setResults([]);
       setIsLoading(false);
       setErrorMessage(null);
+      setIsRateLimited(false);
       setHasSearched(false);
       return;
     }
@@ -339,10 +365,35 @@ export default function App() {
       };
     }
 
+    const cached = getCachedSearchResults(trimmedQuery);
+    if (cached) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      setResults(cached);
+      setIsLoading(false);
+      setErrorMessage(null);
+      setIsRateLimited(false);
+      setHasSearched(true);
+      return;
+    }
+
+    if (trimmedQuery.length < 3) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      setResults([]);
+      setIsLoading(false);
+      setErrorMessage(null);
+      setIsRateLimited(false);
+      setHasSearched(false);
+      return;
+    }
+
     debounceTimerRef.current = window.setTimeout(() => {
       debounceTimerRef.current = null;
       void executeLookup(trimmedQuery, 'search');
-    }, 250);
+    }, 500);
 
     return () => {
       if (debounceTimerRef.current) {
@@ -357,6 +408,7 @@ export default function App() {
 
   const handleSelectTrack = useCallback(
     (track: TrackItem, copiedSync: boolean) => {
+      (document.activeElement as HTMLElement | null)?.blur();
       setSelectedTrack(track);
       if (track.isrc) {
         setRecentTracks(saveRecentTrack(track));
@@ -399,6 +451,7 @@ export default function App() {
     setQuery('');
     setResults([]);
     setErrorMessage(null);
+    setIsRateLimited(false);
     setHasSearched(false);
     inputRef.current?.focus();
   }, []);
@@ -517,7 +570,7 @@ export default function App() {
             opacity: isSheetOpen ? 0.68 : 1,
           }}
           transition={{
-            duration: 0.28,
+            duration: 0.25,
             ease: IOS_CUBIC,
           }}
           className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
@@ -525,10 +578,9 @@ export default function App() {
             overflow: 'clip',
             paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
             transformOrigin: 'center top',
-            willChange: 'transform, opacity',
           }}
         >
-          {/* Breathing Ambient Background Glow behind top ~35% so Liquid Glass surfaces refract shifting light */}
+          {/* Breathing Ambient Background Glow behind top ~35% */}
           <motion.div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[42vh]"
@@ -543,7 +595,6 @@ export default function App() {
             }}
             style={{
               transformOrigin: '50% 18%',
-              willChange: 'transform, opacity',
               background:
                 'radial-gradient(68% 72% at 22% 14%, rgba(48, 209, 88, 0.11) 0%, transparent 72%), radial-gradient(75% 78% at 78% 18%, rgba(58, 75, 115, 0.14) 0%, transparent 75%)',
             }}
@@ -702,22 +753,76 @@ export default function App() {
                   </div>
                 )}
 
+                {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
+                  <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
+                    <p className="text-[13px] text-[#8E8E93]">
+                      Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
+                    </p>
+                  </div>
+                )}
+
                 {!isLoading && errorMessage && (
-                  <div className="liquid-glass rounded-[20px] p-5 text-center">
-                    <p className="text-[15px] font-semibold text-white">
-                      Lookup didn&apos;t complete
+                  <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
+                    {/* Subtle top radial specular glow (zero backdrop-filter) */}
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-x-0 top-0 h-32"
+                      style={{
+                        background:
+                          'radial-gradient(75% 85% at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 159, 10, 0.05) 48%, transparent 100%)',
+                      }}
+                    />
+
+                    {/* Centered top pill handle */}
+                    <div className="relative mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
+
+                    <h3 className="relative text-[18px] font-semibold tracking-[-0.02em] text-white">
+                      {isRateLimited
+                        ? "oh- well that didn't work 🙁"
+                        : "Lookup didn't complete"}
+                    </h3>
+
+                    <p className="relative mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#98989D]">
+                      {isRateLimited
+                        ? "Too many people are searching at once! I'm working to get it fixed"
+                        : errorMessage}
                     </p>
-                    <p className="mt-1.5 text-[13px] leading-relaxed text-[#8E8E93]">
-                      {errorMessage}
-                    </p>
+
+                    {/* Report issue button with GPU-composited pulsing red border glow */}
+                    <motion.a
+                      href="https://instagram.com/enjay404"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      whileTap={{ scale: 0.97 }}
+                      transition={SPRING_BUTTON}
+                      className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+                    >
+                      <motion.span
+                        aria-hidden="true"
+                        animate={{ opacity: [0.35, 1, 0.35] }}
+                        transition={{
+                          duration: 2.2,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                        }}
+                        className="pointer-events-none absolute -inset-[1px] rounded-2xl border border-[#FF453A] shadow-[0_0_16px_rgba(255,69,58,0.45)]"
+                      />
+                      <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF453A] opacity-65" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF453A]" />
+                      </span>
+                      <span className="relative">Report it&apos;s not working</span>
+                    </motion.a>
+
+                    {/* Full-width solid white rounded-2xl pill CTA */}
                     <motion.button
                       type="button"
                       onClick={handleRetry}
                       whileTap={{ scale: 0.97 }}
                       transition={SPRING_BUTTON}
-                      className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 text-[14px] font-semibold text-white active:bg-white/20"
+                      className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
                     >
-                      <RotateCcw className="h-4 w-4" />
+                      <RotateCcw className="h-4 w-4 stroke-[2.2]" />
                       <span>Try again</span>
                     </motion.button>
                   </div>
@@ -798,7 +903,7 @@ export default function App() {
                     ariaLabel="Popular Hits"
                     tracks={quickTryTracks}
                     isLoading={isQuickTryLoading}
-                    skeletonCount={4}
+                    skeletonCount={5}
                     onSelect={handleSelectTrack}
                   />
                 )}

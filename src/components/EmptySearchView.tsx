@@ -25,7 +25,6 @@ export const EmptySearchView = memo(function EmptySearchView({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className="liquid-glass relative overflow-hidden rounded-[20px] px-5 py-8 text-center"
-      style={{ willChange: 'transform, opacity' }}
     >
       {/* Subtle ambient emerald aura behind illustration */}
       <div
@@ -61,7 +60,7 @@ export const EmptySearchView = memo(function EmptySearchView({
               repeat: Infinity,
               ease: 'easeOut',
             }}
-            style={{ transformOrigin: '41px 42px', willChange: 'transform, opacity' }}
+            style={{ transformOrigin: '41px 42px' }}
           />
 
           {/* Gently floating vinyl disc */}
@@ -72,7 +71,6 @@ export const EmptySearchView = memo(function EmptySearchView({
               repeat: Infinity,
               ease: 'easeInOut',
             }}
-            style={{ willChange: 'transform' }}
           >
             <circle
               cx="41"
@@ -117,7 +115,7 @@ export const EmptySearchView = memo(function EmptySearchView({
               repeat: Infinity,
               ease: 'easeInOut',
             }}
-            style={{ transformOrigin: '57px 57px', willChange: 'transform' }}
+            style={{ transformOrigin: '57px 57px' }}
           >
             <circle
               cx="57"

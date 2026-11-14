@@ -2,7 +2,12 @@ import type { TrackItem } from '../types/track';
 
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
+const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v1';
 const MAX_RECENT_TRACKS = 8;
+const MAX_SEARCH_CACHE_ENTRIES = 40;
+const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+
+const searchMemoryCache = new Map<string, { tracks: TrackItem[]; cachedAt: number }>();
 
 export function formatIsrcCode(isrc: string): string {
   return `ISRC:${isrc.trim().toUpperCase()}`;
@@ -30,7 +35,7 @@ export function syncCopyIsrc(isrc: string): boolean {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       // Triggered synchronously inside tap handler to preserve iOS/mobile user gesture activation
       void navigator.clipboard.writeText(formatted).catch(() => {
-        // Silent catch; fallback happens if needed
+        // Fallback happens if needed
       });
       return true;
     }
@@ -52,6 +57,68 @@ export function syncCopyIsrc(isrc: string): boolean {
     return ok;
   } catch {
     return false;
+  }
+}
+
+export function getCachedSearchResults(rawQuery: string): TrackItem[] | null {
+  const key = rawQuery.trim().toLowerCase();
+  if (!key) return null;
+
+  const now = Date.now();
+  const memEntry = searchMemoryCache.get(key);
+  if (memEntry) {
+    if (now - memEntry.cachedAt <= SEARCH_CACHE_TTL_MS) {
+      return memEntry.tracks;
+    }
+    searchMemoryCache.delete(key);
+  }
+
+  try {
+    const raw = sessionStorage.getItem(SEARCH_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Record<string, { tracks: TrackItem[]; cachedAt: number }>;
+    const entry = stored?.[key];
+    if (!entry || !Array.isArray(entry.tracks)) return null;
+    if (now - entry.cachedAt > SEARCH_CACHE_TTL_MS) return null;
+
+    searchMemoryCache.set(key, entry);
+    return entry.tracks;
+  } catch {
+    return null;
+  }
+}
+
+export function setCachedSearchResults(rawQuery: string, tracks: TrackItem[]): void {
+  const key = rawQuery.trim().toLowerCase();
+  if (!key) return;
+
+  const entry = { tracks, cachedAt: Date.now() };
+  if (searchMemoryCache.size >= MAX_SEARCH_CACHE_ENTRIES && !searchMemoryCache.has(key)) {
+    const oldest = searchMemoryCache.keys().next().value;
+    if (oldest !== undefined) {
+      searchMemoryCache.delete(oldest);
+    }
+  }
+  searchMemoryCache.set(key, entry);
+
+  try {
+    const raw = sessionStorage.getItem(SEARCH_CACHE_STORAGE_KEY);
+    const stored: Record<string, { tracks: TrackItem[]; cachedAt: number }> = raw
+      ? (JSON.parse(raw) as Record<string, { tracks: TrackItem[]; cachedAt: number }>)
+      : {};
+    stored[key] = entry;
+
+    const keys = Object.keys(stored);
+    if (keys.length > MAX_SEARCH_CACHE_ENTRIES) {
+      keys
+        .sort((a, b) => (stored[a]?.cachedAt ?? 0) - (stored[b]?.cachedAt ?? 0))
+        .slice(0, keys.length - MAX_SEARCH_CACHE_ENTRIES)
+        .forEach((k) => delete stored[k]);
+    }
+
+    sessionStorage.setItem(SEARCH_CACHE_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Ignore storage quota errors
   }
 }
 
@@ -104,32 +171,5 @@ export function saveGuideExpandedPreference(isOpen: boolean): void {
     localStorage.setItem(GUIDE_OPEN_STORAGE_KEY, String(isOpen));
   } catch {
     // Ignore storage errors
-  }
-}
-
-const POPULAR_HITS_CACHE_KEY = 'trackcode_popular_hits_v1';
-const POPULAR_HITS_TTL_MS = 6 * 60 * 60 * 1000;
-
-export function loadCachedPopularHits(): TrackItem[] {
-  try {
-    const raw = localStorage.getItem(POPULAR_HITS_CACHE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as { tracks?: TrackItem[]; cachedAt?: number };
-    if (!parsed || !Array.isArray(parsed.tracks) || !parsed.cachedAt) return [];
-    if (Date.now() - parsed.cachedAt > POPULAR_HITS_TTL_MS) return [];
-    return parsed.tracks;
-  } catch {
-    return [];
-  }
-}
-
-export function saveCachedPopularHits(tracks: TrackItem[]): void {
-  try {
-    localStorage.setItem(
-      POPULAR_HITS_CACHE_KEY,
-      JSON.stringify({ tracks, cachedAt: Date.now() })
-    );
-  } catch {
-    // Ignore storage quota errors
   }
 }
