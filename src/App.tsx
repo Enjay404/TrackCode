@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  BookOpen,
   ChevronDown,
   ChevronUp,
   ClipboardPaste,
@@ -14,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  type MouseEvent,
   type ReactNode,
   Suspense,
   lazy,
@@ -65,6 +67,7 @@ import {
 
 const BottomSheet = lazy(() => import('./components/BottomSheet'));
 const EmptySearchView = lazy(() => import('./components/EmptySearchView'));
+const GuidePage = lazy(() => import('./components/GuidePage'));
 const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
 
 const FORCE_MAINTENANCE = false;
@@ -315,7 +318,7 @@ function deriveApiStatus(meta: {
   };
 }
 
-function TrackCodeWorkspace() {
+function TrackCodeWorkspace({ onNavigate }: { onNavigate: (path: string) => void }) {
   const isDesktop = useIsDesktop();
   const [query, setQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -1377,6 +1380,18 @@ function TrackCodeWorkspace() {
             <div className="hidden lg:block">
               <ApiStatusPill status={apiStatus} />
             </div>
+            <a
+              href="/guide"
+              onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                onNavigate('/guide');
+              }}
+              className="liquid-glass hidden min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13px] font-medium text-[#D1D1D6] transition-colors hover:bg-white/[0.1] hover:text-white active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 lg:inline-flex"
+            >
+              <BookOpen className="h-3.5 w-3.5 text-[#30D158]" aria-hidden="true" />
+              <span>Guide</span>
+            </a>
             <motion.button
               type="button"
               onClick={() => void handleShareApp()}
@@ -1764,7 +1779,7 @@ function TrackCodeWorkspace() {
         </main>
 
         {/* Footer: Fixed bottom dock on Mobile (<1024px), clean centered footer under workspace on Desktop (lg+) */}
-        <FooterDock />
+        <FooterDock currentPath="/" onNavigate={onNavigate} />
       </div>
 
       {/* Offline Status Indicator */}
@@ -1816,10 +1831,38 @@ function TrackCodeWorkspace() {
   );
 }
 
+function normalizePathname(rawPath: string): string {
+  const trimmed = rawPath.replace(/\/+$/, '');
+  return trimmed || '/';
+}
+
 export default function App() {
-  const isMaintenanceRoute =
-    typeof window !== 'undefined' &&
-    window.location.pathname.replace(/\/+$/, '') === '/maintenance';
+  const [pathname, setPathname] = useState<string>(() =>
+    typeof window !== 'undefined' ? normalizePathname(window.location.pathname) : '/'
+  );
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setPathname(normalizePathname(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = useCallback((nextPath: string) => {
+    const target = normalizePathname(nextPath);
+    if (typeof window !== 'undefined') {
+      const current = normalizePathname(window.location.pathname);
+      if (current !== target) {
+        window.history.pushState({}, '', target);
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    setPathname(target);
+  }, []);
+
+  const isMaintenanceRoute = pathname === '/maintenance';
+  const isGuideRoute = pathname === '/guide';
   const showMaintenance =
     FORCE_MAINTENANCE ||
     import.meta.env.VITE_MAINTENANCE_MODE === 'true' ||
@@ -1831,8 +1874,12 @@ export default function App() {
         <Suspense fallback={<div className="min-h-[100dvh] bg-[#09090B]" />}>
           <MaintenancePage />
         </Suspense>
+      ) : isGuideRoute ? (
+        <Suspense fallback={<div className="min-h-[100dvh] bg-[#09090B]" />}>
+          <GuidePage onNavigate={navigateTo} />
+        </Suspense>
       ) : (
-        <TrackCodeWorkspace />
+        <TrackCodeWorkspace onNavigate={navigateTo} />
       )}
       <Analytics />
     </MotionConfig>
