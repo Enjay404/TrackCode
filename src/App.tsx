@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   ClipboardPaste,
@@ -762,6 +763,7 @@ export default function App() {
           }}
           onSearchOtherVersions={handleSearchOtherVersions}
         />
+        <Analytics />
       </div>
     </MotionConfig>
   );
