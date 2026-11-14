@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /
+Allow: /guide
 Disallow: /maintenance
 Disallow: /api/
 
