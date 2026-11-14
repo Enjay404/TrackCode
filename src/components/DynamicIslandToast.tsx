@@ -30,10 +30,12 @@ export const DynamicIslandToast = memo(function DynamicIslandToast({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -48, scale: 0.92 }}
             transition={{
-              type: 'spring',
-              stiffness: 440,
-              damping: 32,
-              mass: 0.85,
+              duration: 0.28,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            style={{
+              willChange: 'transform, opacity',
+              contain: 'layout style paint',
             }}
             className="pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-full border border-white/15 bg-[#1C1C1E]/95 px-4 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.65)]"
           >

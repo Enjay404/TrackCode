@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, type PanInfo } from 'motion/react';
 import { ChevronDown, Copy, Disc3, Search, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
   ALBUM_TYPE_BADGE_STYLE,
@@ -29,9 +29,12 @@ const SPRING_BUTTON = {
   damping: 30,
 };
 
-const IOS_EASE = [0.32, 0.72, 0, 1] as const;
+const IOS_EASE = [0.22, 1, 0.36, 1] as const;
 
-export function BottomSheet({
+const AUTO_COPY_RESET_MS = 1800;
+const MANUAL_COPY_RESET_MS = 2000;
+
+export const BottomSheet = memo(function BottomSheet({
   track,
   autoCopiedSignal,
   onClose,
@@ -50,6 +53,7 @@ export function BottomSheet({
     return () => {
       if (copyTimerRef.current) {
         window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
       }
     };
   }, []);
@@ -87,14 +91,16 @@ export function BottomSheet({
     setCopiedState(true);
     const glowDelayTimer = window.setTimeout(() => {
       setPulseCount((c) => c + 1);
-    }, 420);
+    }, 280);
     copyTimerRef.current = window.setTimeout(() => {
+      copyTimerRef.current = null;
       setCopiedState(false);
-    }, 2600);
+    }, AUTO_COPY_RESET_MS);
     return () => {
       window.clearTimeout(glowDelayTimer);
       if (copyTimerRef.current) {
         window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
       }
     };
   }, [track, autoCopiedSignal]);
@@ -130,8 +136,9 @@ export function BottomSheet({
       setPulseCount((c) => c + 1);
       onCopied(track.isrc);
       copyTimerRef.current = window.setTimeout(() => {
+        copyTimerRef.current = null;
         setCopiedState(false);
-      }, 2600);
+      }, MANUAL_COPY_RESET_MS);
     }
   };
 
@@ -165,28 +172,31 @@ export function BottomSheet({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.38, ease: 'easeOut' }}
+            transition={{ duration: 0.28, ease: IOS_EASE }}
+            style={{ willChange: 'opacity', contain: 'strict' }}
             onClick={onClose}
             className="fixed inset-0 bg-black/65"
           />
 
           <motion.div
             key={track.id}
-            initial={{ y: '100%' }}
+            initial={{ y: '100%', z: 0, opacity: 0.96 }}
             animate={{
               y: 0,
+              z: 0,
+              opacity: 1,
               transition: {
-                type: 'spring',
-                stiffness: 240,
-                damping: 30,
-                mass: 1.15,
+                duration: 0.3,
+                ease: IOS_EASE,
               },
             }}
             exit={{
               y: '100%',
+              z: 0,
+              opacity: 0.96,
               transition: {
-                duration: 0.44,
-                ease: [0.22, 1, 0.36, 1],
+                duration: 0.28,
+                ease: IOS_EASE,
               },
             }}
             drag="y"
@@ -195,9 +205,13 @@ export function BottomSheet({
             onDragEnd={handleDragEnd}
             style={{
               paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-              willChange: 'transform',
+              background: 'rgba(28, 28, 30, 0.88)',
+              backdropFilter: 'blur(16px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+              willChange: 'transform, opacity',
+              contain: 'layout style paint',
             }}
-            className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] border-t border-white/10 bg-[#1C1C1E] px-5 pt-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
+            className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] border-t border-white/10 px-5 pt-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
           >
             {/* Ambient radial glow tinted with album cover dominant color */}
             <motion.div
@@ -244,9 +258,11 @@ export function BottomSheet({
                   <img
                     src={artSrc}
                     alt={`${track.albumName || track.name} artwork`}
+                    width={88}
+                    height={88}
                     referrerPolicy="no-referrer"
+                    loading="lazy"
                     decoding="async"
-                    fetchPriority="high"
                     onError={() => setImgError(true)}
                     className="h-full w-full object-cover"
                   />
@@ -344,7 +360,7 @@ export function BottomSheet({
                         : { opacity: 0 }
                     }
                     transition={{
-                      duration: 1.5,
+                      duration: 1.3,
                       times: [0, 0.15, 0.55, 1],
                       ease: 'easeOut',
                     }}
@@ -367,59 +383,64 @@ export function BottomSheet({
                   </span>
                 </motion.button>
 
-                <motion.button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={handleManualCopy}
-                  whileTap={{ scale: 0.97 }}
-                  transition={SPRING_BUTTON}
-                  className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-150 focus-visible:outline-none ${
-                    copiedState
-                      ? 'bg-[#30D158] text-black'
-                      : 'bg-white text-black active:bg-[#2C2C2E] active:text-white'
-                  }`}
-                >
-                  {copiedState ? (
-                    <>
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        className="h-5 w-5 stroke-current"
-                        strokeWidth={2.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <motion.path
-                          d="M5 13l4 4L19 7"
-                          initial={{ pathLength: 0 }}
-                          animate={{ pathLength: 1 }}
-                          transition={{ duration: 0.24, ease: 'easeOut' }}
-                        />
-                      </svg>
-                      <span>Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-4 w-4 stroke-[2.2]" />
-                      <span>Copy ISRC</span>
-                    </>
-                  )}
-                </motion.button>
+                <div>
+                  <motion.button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={handleManualCopy}
+                    whileTap={{ scale: 0.97 }}
+                    transition={SPRING_BUTTON}
+                    className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-200 focus-visible:outline-none ${
+                      copiedState
+                        ? 'bg-[#30D158] text-black'
+                        : 'bg-white text-black active:bg-[#2C2C2E] active:text-white'
+                    }`}
+                  >
+                    {copiedState ? (
+                      <>
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="h-5 w-5 stroke-current"
+                          strokeWidth={2.6}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <motion.path
+                            d="M5 13l4 4L19 7"
+                            initial={{ pathLength: 0 }}
+                            animate={{ pathLength: 1 }}
+                            transition={{ duration: 0.22, ease: 'easeOut' }}
+                          />
+                        </svg>
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4 stroke-[2.2]" />
+                        <span>Copy ISRC</span>
+                      </>
+                    )}
+                  </motion.button>
 
-                <AnimatePresence initial={false}>
-                  {copiedState && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0, y: -4 }}
-                      animate={{ opacity: 1, height: 'auto', y: 0 }}
-                      exit={{ opacity: 0, height: 0, y: -4 }}
-                      transition={{ duration: 0.24, ease: IOS_EASE }}
-                      className="overflow-hidden"
-                    >
-                      <div className="flex justify-center pt-0.5">
+                  <div
+                    aria-hidden={!copiedState}
+                    className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                      copiedState ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div
+                        className={`flex justify-center pt-2.5 transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                          copiedState ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
+                        }`}
+                        style={{ willChange: 'transform, opacity' }}
+                      >
                         <a
                           href="https://ko-fi.com/enjay404"
                           target="_blank"
                           rel="noopener noreferrer"
+                          tabIndex={copiedState ? 0 : -1}
                           onPointerDown={(e) => e.stopPropagation()}
                           className="group inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[13px] font-normal text-[#8E8E93] transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
                         >
@@ -432,9 +453,9 @@ export function BottomSheet({
                           </span>
                         </a>
                       </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="mt-5 space-y-3">
@@ -483,14 +504,18 @@ export function BottomSheet({
                 </motion.span>
               </motion.button>
 
-              <AnimatePresence initial={false}>
-                {guideOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.24, ease: IOS_EASE }}
-                    className="overflow-hidden"
+              <div
+                aria-hidden={!guideOpen}
+                className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                  guideOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
+                }`}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div
+                    className={`transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                      guideOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
+                    }`}
+                    style={{ willChange: 'transform, opacity' }}
                   >
                     <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
                       <li className="flex gap-2.5">
@@ -516,9 +541,9 @@ export function BottomSheet({
                         <span>Tap the hidden track when it pops up.</span>
                       </li>
                     </ol>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Matching Creator Footer inside Bottom Sheet */}
@@ -540,4 +565,4 @@ export function BottomSheet({
       )}
     </AnimatePresence>
   );
-}
+});

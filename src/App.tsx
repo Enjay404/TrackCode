@@ -10,7 +10,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { BottomSheet } from './components/BottomSheet';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
 import { EmptySearchView } from './components/EmptySearchView';
@@ -34,10 +34,127 @@ const SPRING_BUTTON = {
   damping: 30,
 };
 
+const IOS_CUBIC = [0.22, 1, 0.36, 1] as const;
+
 const PLACEHOLDER_MESSAGES = [
   'Search song, artist, or Spotify link',
   'Paste open.spotify.com or spotify.link',
 ] as const;
+
+interface TrackListSectionProps {
+  title: string;
+  ariaLabel: string;
+  tracks: TrackItem[];
+  isLoading?: boolean;
+  skeletonCount?: number;
+  onSelect: (track: TrackItem, copiedSync: boolean) => void;
+  onClear?: () => void;
+}
+
+const TrackListSection = memo(function TrackListSection({
+  title,
+  ariaLabel,
+  tracks,
+  isLoading = false,
+  skeletonCount = 4,
+  onSelect,
+  onClear,
+}: TrackListSectionProps) {
+  return (
+    <section aria-label={ariaLabel}>
+      <div className="flex items-center justify-between px-1 pb-1.5">
+        <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-[#8E8E93]">
+          {title}
+        </h2>
+        {onClear && (
+          <motion.button
+            type="button"
+            onClick={onClear}
+            whileTap={{ scale: 0.97 }}
+            transition={SPRING_BUTTON}
+            className="flex min-h-[36px] items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] active:bg-white/10"
+          >
+            Clear
+          </motion.button>
+        )}
+      </div>
+      <div className="liquid-glass overflow-hidden rounded-[20px]">
+        {isLoading ? (
+          <SkeletonRows count={skeletonCount} />
+        ) : (
+          tracks.map((track, index) => (
+            <TrackRow
+              key={track.id}
+              track={track}
+              index={index}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
+    </section>
+  );
+});
+
+const FooterDock = memo(function FooterDock() {
+  return (
+    <footer
+      className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-3 pt-6 pb-[max(14px,env(safe-area-inset-bottom))]"
+      style={{
+        contain: 'layout style',
+        background:
+          'linear-gradient(to top, rgba(0, 0, 0, 0.94) 40%, rgba(0, 0, 0, 0.6) 72%, rgba(0, 0, 0, 0) 100%)',
+      }}
+    >
+      <div className="flex max-w-full items-center justify-center gap-2">
+        <motion.a
+          href="https://instagram.com/enjay404"
+          target="_blank"
+          rel="noopener noreferrer"
+          whileTap={{ scale: 0.96 }}
+          transition={SPRING_BUTTON}
+          className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          style={{
+            background: 'rgba(28, 28, 30, 0.72)',
+            backdropFilter: 'blur(14px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            boxShadow:
+              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+          }}
+        >
+          <span>Made with ❤️ by</span>
+          <span className="font-medium text-white">@enjay404</span>
+        </motion.a>
+
+        <motion.a
+          href="https://ko-fi.com/enjay404"
+          target="_blank"
+          rel="noopener noreferrer"
+          whileTap={{ scale: 0.96 }}
+          transition={SPRING_BUTTON}
+          className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          style={{
+            background: 'rgba(28, 28, 30, 0.72)',
+            backdropFilter: 'blur(14px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            boxShadow:
+              'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            className="drop-shadow-[0_0_6px_rgba(255,159,10,0.35)] transition-all duration-150 group-hover:drop-shadow-[0_0_8px_rgba(48,209,88,0.5)]"
+          >
+            ☕
+          </span>
+          <span>Support</span>
+        </motion.a>
+      </div>
+    </footer>
+  );
+});
 
 export default function App() {
   const [query, setQuery] = useState('');
@@ -225,7 +342,7 @@ export default function App() {
     debounceTimerRef.current = window.setTimeout(() => {
       debounceTimerRef.current = null;
       void executeLookup(trimmedQuery, 'search');
-    }, 300);
+    }, 250);
 
     return () => {
       if (debounceTimerRef.current) {
@@ -254,7 +371,7 @@ export default function App() {
     [showToast]
   );
 
-  const handlePasteFromClipboard = async () => {
+  const handlePasteFromClipboard = useCallback(async () => {
     try {
       if (!navigator.clipboard?.readText) {
         inputRef.current?.focus();
@@ -272,9 +389,9 @@ export default function App() {
       inputRef.current?.focus();
       showToast('Allow paste or long-press input', 'info');
     }
-  };
+  }, [showToast]);
 
-  const handleClearInput = () => {
+  const handleClearInput = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -284,19 +401,33 @@ export default function App() {
     setErrorMessage(null);
     setHasSearched(false);
     inputRef.current?.focus();
-  };
+  }, []);
 
-  const handleClearRecent = () => {
+  const handleClearRecent = useCallback(() => {
     clearRecentTracksStorage();
     setRecentTracks([]);
     showToast('Recent history cleared', 'info');
-  };
+  }, [showToast]);
 
-  const handleSearchOtherVersions = (track: TrackItem) => {
+  const handleSearchOtherVersions = useCallback((track: TrackItem) => {
     setSelectedTrack(null);
     const nextQuery = `${track.name} ${track.primaryArtist}`.trim();
     setQuery(nextQuery);
-  };
+  }, []);
+
+  const handleCloseSheet = useCallback(() => {
+    setSelectedTrack(null);
+  }, []);
+
+  const handleBottomSheetCopied = useCallback(
+    (isrc: string) => {
+      if (selectedTrack) {
+        setRecentTracks(saveRecentTrack(selectedTrack));
+      }
+      showToast(`Copied ${formatIsrcCode(isrc)}`, 'success');
+    },
+    [selectedTrack, showToast]
+  );
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -384,13 +515,10 @@ export default function App() {
           animate={{
             scale: isSheetOpen ? 0.96 : 1,
             opacity: isSheetOpen ? 0.68 : 1,
-            borderRadius: isSheetOpen ? 20 : 0,
           }}
           transition={{
-            type: 'spring',
-            stiffness: 240,
-            damping: 30,
-            mass: 1.15,
+            duration: 0.3,
+            ease: IOS_CUBIC,
           }}
           className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
           style={{
@@ -634,10 +762,8 @@ export default function App() {
                       whileTap={{ scale: 0.97 }}
                       transition={SPRING_BUTTON}
                       style={{
-                        background: 'rgba(28, 28, 30, 0.45)',
-                        backdropFilter: 'blur(20px) saturate(160%)',
-                        WebkitBackdropFilter: 'blur(20px) saturate(160%)',
-                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        background: 'rgba(28, 28, 30, 0.78)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
                       }}
                       className="group flex w-full items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-colors duration-100 hover:bg-white/[0.04] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                     >
@@ -656,57 +782,25 @@ export default function App() {
 
                 {/* Recent History Inset Grouped Liquid Glass Card */}
                 {recentTracks.length > 0 && (
-                  <section aria-label="Recent copied tracks">
-                    <div className="flex items-center justify-between px-1 pb-1.5">
-                      <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-[#8E8E93]">
-                        Recent
-                      </h2>
-                      <motion.button
-                        type="button"
-                        onClick={handleClearRecent}
-                        whileTap={{ scale: 0.97 }}
-                        transition={SPRING_BUTTON}
-                        className="flex min-h-[36px] items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] active:bg-white/10"
-                      >
-                        Clear
-                      </motion.button>
-                    </div>
-                    <div className="liquid-glass overflow-hidden rounded-[20px]">
-                      {recentTracks.map((track, index) => (
-                        <TrackRow
-                          key={track.id}
-                          track={track}
-                          index={index}
-                          onSelect={handleSelectTrack}
-                        />
-                      ))}
-                    </div>
-                  </section>
+                  <TrackListSection
+                    title="Recent"
+                    ariaLabel="Recent copied tracks"
+                    tracks={recentTracks}
+                    onSelect={handleSelectTrack}
+                    onClear={handleClearRecent}
+                  />
                 )}
 
                 {/* Popular Hits Inset Grouped Liquid Glass Card */}
                 {(isQuickTryLoading || quickTryTracks.length > 0) && (
-                  <section aria-label="Popular Hits">
-                    <div className="flex items-center justify-between px-1 pb-1.5">
-                      <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-[#8E8E93]">
-                        POPULAR HITS
-                      </h2>
-                    </div>
-                    <div className="liquid-glass overflow-hidden rounded-[20px]">
-                      {isQuickTryLoading ? (
-                        <SkeletonRows count={4} />
-                      ) : (
-                        quickTryTracks.map((track, index) => (
-                          <TrackRow
-                            key={track.id}
-                            track={track}
-                            index={index}
-                            onSelect={handleSelectTrack}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </section>
+                  <TrackListSection
+                    title="POPULAR HITS"
+                    ariaLabel="Popular Hits"
+                    tracks={quickTryTracks}
+                    isLoading={isQuickTryLoading}
+                    skeletonCount={4}
+                    onSelect={handleSelectTrack}
+                  />
                 )}
               </div>
             )}
@@ -715,60 +809,7 @@ export default function App() {
         </motion.div>
 
         {/* Pinned Floating Creator Footer Dock (z-20: above content, covered by BottomSheet z-40) */}
-        <footer
-          className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-3 pt-6 pb-[max(14px,env(safe-area-inset-bottom))]"
-          style={{
-            background:
-              'linear-gradient(to top, rgba(0, 0, 0, 0.94) 40%, rgba(0, 0, 0, 0.6) 72%, rgba(0, 0, 0, 0) 100%)',
-          }}
-        >
-          <div className="flex max-w-full items-center justify-center gap-2">
-            <motion.a
-              href="https://instagram.com/enjay404"
-              target="_blank"
-              rel="noopener noreferrer"
-              whileTap={{ scale: 0.96 }}
-              transition={SPRING_BUTTON}
-              className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-              style={{
-                background: 'rgba(28, 28, 30, 0.72)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                boxShadow:
-                  'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
-              }}
-            >
-              <span>Made with ❤️ by</span>
-              <span className="font-medium text-white">@enjay404</span>
-            </motion.a>
-
-            <motion.a
-              href="https://ko-fi.com/enjay404"
-              target="_blank"
-              rel="noopener noreferrer"
-              whileTap={{ scale: 0.96 }}
-              transition={SPRING_BUTTON}
-              className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-              style={{
-                background: 'rgba(28, 28, 30, 0.72)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                boxShadow:
-                  'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="drop-shadow-[0_0_6px_rgba(255,159,10,0.35)] transition-all duration-150 group-hover:drop-shadow-[0_0_8px_rgba(48,209,88,0.5)]"
-              >
-                ☕
-              </span>
-              <span>Support</span>
-            </motion.a>
-          </div>
-        </footer>
+        <FooterDock />
 
         {/* Offline Status Indicator */}
         {!isOnline && (
@@ -781,13 +822,8 @@ export default function App() {
         <BottomSheet
           track={selectedTrack}
           autoCopiedSignal={autoCopiedSignal}
-          onClose={() => setSelectedTrack(null)}
-          onCopied={(isrc) => {
-            if (selectedTrack) {
-              setRecentTracks(saveRecentTrack(selectedTrack));
-            }
-            showToast(`Copied ${formatIsrcCode(isrc)}`, 'success');
-          }}
+          onClose={handleCloseSheet}
+          onCopied={handleBottomSheetCopied}
           onSearchOtherVersions={handleSearchOtherVersions}
         />
         <Analytics />
