@@ -1,13 +1,13 @@
 {
   "id": "/",
-  "name": "TrackCode",
+  "name": "TrackCode — ISRC Finder",
   "short_name": "TrackCode",
-  "description": "Instant Spotify ISRC lookup for Instagram Stories & Notes. Built by @enjay404.",
+  "description": "For when Instagram refuses to show the song you want.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#09090B",
+  "theme_color": "#09090B",
   "lang": "en",
   "icons": [
     {

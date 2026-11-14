@@ -13,16 +13,25 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         manifest: false,
         includeAssets: [
+          'manifest.webmanifest',
           'favicon.ico',
           'apple-touch-icon.png',
           'icon-192x192.png',
           'icon-512x512.png',
           'pwa-maskable-512x512.png',
+          'assets/aistudio/logo_f0aa9f50.jpg',
         ],
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['assets/aistudio/**', 'og-image.png', 'og-image.jpg'],
-          navigateFallbackDenylist: [/^\/api\//, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/og-image\.jpg$/],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
+          globIgnores: ['assets/aistudio/trackcode*', 'og-image.png', 'og-image.jpg'],
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            /^\/robots\.txt$/,
+            /^\/sitemap\.xml$/,
+            /^\/og-image\.jpg$/,
+            /^\/manifest\.webmanifest$/,
+            /^\/manifest\.json$/,
+          ],
           runtimeCaching: [
             {
               urlPattern: /\/api\/quick-try$/,

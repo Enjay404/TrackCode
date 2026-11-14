@@ -22,6 +22,13 @@ export function MaintenancePage() {
           className="flex flex-col items-center pb-5 text-center"
           style={{ paddingTop: 'max(26px, env(safe-area-inset-top))' }}
         >
+          <img
+            src="/assets/aistudio/logo_f0aa9f50.jpg"
+            alt="TrackCode logo"
+            width={56}
+            height={56}
+            className="mb-3 h-14 w-14 rounded-[14px] border border-white/[0.14] object-cover shadow-[0_8px_24px_rgba(0,0,0,0.7)]"
+          />
           <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
             TrackCode
           </h1>

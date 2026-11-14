@@ -5,10 +5,14 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+const IOS_IN_APP_UA_REGEX =
+  /whatsapp|instagram|fban|fbav|fb_iab|messenger|line\/|tiktok|musical_ly|bytedance|snapchat|twitter|telegram|micromessenger|gsa\//i;
+
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isIOSInApp, setIsIOSInApp] = useState(false);
 
   useEffect(() => {
     const isStandalone =
@@ -17,8 +21,11 @@ export function usePWAInstall() {
     setIsInstalled(isStandalone);
 
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    const isIPadOS =
+      window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1;
+    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) || isIPadOS;
     setIsIOS(isIOSDevice);
+    setIsIOSInApp(isIOSDevice && IOS_IN_APP_UA_REGEX.test(userAgent));
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -55,6 +62,7 @@ export function usePWAInstall() {
     isInstallable: Boolean(deferredPrompt),
     isInstalled,
     isIOS,
+    isIOSInApp,
     install,
   };
 }
