@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   ClipboardPaste,
   Copy,
   Disc3,
@@ -177,8 +178,11 @@ interface StorySlideCardProps {
   subtext?: string;
   subtextItalic?: boolean;
   glowStyle: string;
+  paddingClass?: string;
+  customHeader?: ReactNode;
+  customLayout?: ReactNode;
   bottomSlot?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   cardRef?: (node: HTMLElement | null) => void;
 }
 
@@ -189,6 +193,9 @@ const StorySlideCard = memo(function StorySlideCard({
   subtext,
   subtextItalic = false,
   glowStyle,
+  paddingClass = 'py-12',
+  customHeader,
+  customLayout,
   bottomSlot,
   children,
   cardRef,
@@ -197,7 +204,7 @@ const StorySlideCard = memo(function StorySlideCard({
     <article
       ref={cardRef}
       id={id}
-      className="relative flex h-[640px] w-[360px] shrink-0 flex-col justify-between overflow-hidden rounded-[32px] border border-white/[0.12] bg-[#09090B] px-6 py-12 shadow-[0_24px_60px_rgba(0,0,0,0.85)]"
+      className={`relative flex h-[640px] w-[360px] shrink-0 flex-col justify-between overflow-hidden rounded-[32px] border border-white/[0.12] bg-[#09090B] px-6 shadow-[0_24px_60px_rgba(0,0,0,0.85)] ${paddingClass}`}
     >
       {/* Top ambient radial glow */}
       <div
@@ -212,43 +219,53 @@ const StorySlideCard = memo(function StorySlideCard({
         className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.07),transparent_70%)]"
       />
 
-      {/* Top Safe-Zone Copy */}
-      <div className="relative z-10">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/85">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#30D158]" aria-hidden="true" />
-          <span className="inline-flex items-center gap-1.5">{badge}</span>
-        </span>
+      {customLayout ? (
+        customLayout
+      ) : (
+        <>
+          {/* Top Safe-Zone Copy */}
+          <div className="relative z-10">
+            {customHeader ?? (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/85">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#30D158]" aria-hidden="true" />
+                  <span className="inline-flex items-center gap-1.5">{badge}</span>
+                </span>
 
-        <h2 className="mt-3 text-[22px] font-bold leading-[1.14] tracking-[-0.03em] text-white">
-          {headline}
-        </h2>
+                <h2 className="mt-3 text-[22px] font-bold leading-[1.14] tracking-[-0.03em] text-white">
+                  {headline}
+                </h2>
 
-        {subtext && (
-          <p
-            className={`mt-1.5 text-[13px] leading-[1.45] text-[#98989D] ${
-              subtextItalic ? 'italic text-[#AEAEB2]' : ''
-            }`}
-          >
-            {subtext}
-          </p>
-        )}
-      </div>
-
-      {/* Center UI Mockup */}
-      <div className="relative z-10 my-auto py-2">{children}</div>
-
-      {/* Bottom Safe-Zone Watermark */}
-      <div className="relative z-10 flex justify-center">
-        {bottomSlot ?? (
-          <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium tracking-[0.01em] text-white/90">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.8)]"
-              aria-hidden="true"
-            />
-            <span>trackcode.online</span>
+                {subtext && (
+                  <p
+                    className={`mt-1.5 text-[13px] leading-[1.45] text-[#98989D] ${
+                      subtextItalic ? 'italic text-[#AEAEB2]' : ''
+                    }`}
+                  >
+                    {subtext}
+                  </p>
+                )}
+              </>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Center UI Mockup */}
+          <div className="relative z-10 my-auto py-2">{children}</div>
+
+          {/* Bottom Safe-Zone Watermark */}
+          <div className="relative z-10 flex justify-center">
+            {bottomSlot ?? (
+              <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium tracking-[0.01em] text-white/90">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[#30D158] shadow-[0_0_8px_rgba(48,209,88,0.8)]"
+                  aria-hidden="true"
+                />
+                <span>trackcode.online</span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </article>
   );
 });
@@ -788,6 +805,123 @@ const PromoFourContent = memo(function PromoFourContent() {
   );
 });
 
+const SlideFiveContent = memo(function SlideFiveContent() {
+  const steps = [
+    {
+      num: '1',
+      label: 'Song missing on IG?',
+      pillText: 'No results found',
+      pillClass: 'border border-white/[0.08] bg-black/45 text-[#8E8E93]',
+    },
+    {
+      num: '2',
+      label: 'Search TrackCode',
+      pillText: 'About You · The 1975',
+      pillClass: 'border border-white/[0.14] bg-white/[0.08] text-white/90',
+    },
+    {
+      num: '3',
+      label: 'Copy ISRC code',
+      pillText: ABOUT_YOU_ISRC,
+      pillClass:
+        'font-mono-isrc border border-[#30D158]/35 bg-[#30D158]/[0.1] text-[#30D158] text-[10px]',
+    },
+    {
+      num: '4',
+      label: 'Paste in IG Music',
+      pillText: '✓ Track Unlocked',
+      pillClass:
+        'border border-white/30 bg-white/[0.12] text-white shadow-[0_0_12px_rgba(255,255,255,0.12)]',
+    },
+  ] as const;
+
+  return (
+    <div className="relative space-y-2.5">
+      {/* Subtle vertical connecting timeline line */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-5 bottom-5 left-[23px] z-0 w-px bg-gradient-to-b from-white/[0.08] via-white/[0.18] to-[#30D158]/45"
+      />
+
+      {steps.map((step) => (
+        <div
+          key={step.num}
+          className="relative z-10 flex items-center justify-between gap-2 rounded-2xl border border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-3.5 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.45)]"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] bg-[#262629] text-[10.5px] font-bold tabular-nums text-white">
+              {step.num}
+            </span>
+            <span className="truncate text-[11.5px] font-medium text-white/90">
+              {step.label}
+            </span>
+          </div>
+
+          <span
+            className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold ${step.pillClass}`}
+          >
+            {step.pillText}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const PromoFiveTryNowLayout = memo(function PromoFiveTryNowLayout() {
+  return (
+    <>
+      {/* Top Section (Above Sticker Zone) */}
+      <div className="relative z-10 flex flex-col items-center text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85">
+          <span>TrackCode · ISRC FINDER</span>
+          <SriLankaFlag />
+        </span>
+
+        <h2 className="mt-3.5 text-[38px] font-bold leading-none tracking-tight text-white">
+          Try Now
+        </h2>
+
+        <p className="mx-auto mt-2.5 max-w-[260px] text-[12.5px] leading-snug text-white/55">
+          Paste a song or Spotify link &amp; unlock it on Instagram.
+        </p>
+
+        {/* Stacked Downward Chevrons */}
+        <div
+          aria-hidden="true"
+          className="animate-promo-chevron mt-3 flex flex-col items-center -space-y-2.5"
+        >
+          <ChevronDown className="h-4 w-4 text-white/30" />
+          <ChevronDown className="h-4 w-4 text-white/70" />
+        </div>
+      </div>
+
+      {/* Center Dedicated Instagram Link Sticker Zone */}
+      <div className="relative z-10 flex h-[168px] w-full flex-col items-center justify-center rounded-[28px] border border-dashed border-white/[0.15] bg-[#040405] shadow-[inset_0_4px_24px_rgba(0,0,0,0.95)]">
+        <span className="select-none text-[10px] font-medium uppercase tracking-[0.22em] text-white/[0.16]">
+          TAP STICKER · ADD LINK HERE
+        </span>
+      </div>
+
+      {/* Bottom Section (Below Sticker Zone) */}
+      <div className="relative z-10 flex flex-col items-center text-center">
+        {/* Stacked Upward Chevrons */}
+        <div
+          aria-hidden="true"
+          className="mb-3 flex flex-col items-center -space-y-2.5"
+        >
+          <ChevronUp className="h-4 w-4 text-white/70" />
+          <ChevronUp className="h-4 w-4 text-white/30" />
+        </div>
+
+        <div className="w-full rounded-2xl border border-white/[0.09] border-t-white/[0.16] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-2.5 text-[11.5px] font-medium text-white/75 shadow-[0_8px_22px_rgba(0,0,0,0.5)]">
+          Free · Zero Login · Works in Safari &amp; Chrome
+        </div>
+      </div>
+    </>
+  );
+});
+
 interface SlideDefinition {
   id: string;
   anchor: string;
@@ -797,8 +931,11 @@ interface SlideDefinition {
   subtext?: string;
   subtextItalic?: boolean;
   glowStyle: string;
+  paddingClass?: string;
+  customHeader?: ReactNode;
+  customLayout?: ReactNode;
   bottomSlot?: ReactNode;
-  content: ReactNode;
+  content?: ReactNode;
 }
 
 const GUIDE_SLIDES: SlideDefinition[] = [
@@ -853,6 +990,27 @@ const GUIDE_SLIDES: SlideDefinition[] = [
       </div>
     ),
     content: <SlideFourContent />,
+  },
+  {
+    id: 'slide-5',
+    anchor: 'all-in-one',
+    filename: 'trackcode-guide-all-in-one.png',
+    badge: 'ALL-IN-ONE · QUICK GUIDE',
+    headline: 'Unlock any song on Instagram.',
+    paddingClass: 'py-11',
+    customHeader: (
+      <>
+        <span className="inline-block rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
+          ALL-IN-ONE · QUICK GUIDE
+        </span>
+        <h2 className="mt-2.5 text-[22px] font-bold leading-tight tracking-tight text-white">
+          Unlock any song on Instagram.
+        </h2>
+      </>
+    ),
+    glowStyle:
+      'radial-gradient(75% 80% at 50% 0%, rgba(48, 209, 88, 0.14) 0%, rgba(255, 255, 255, 0.04) 55%, transparent 100%)',
+    content: <SlideFiveContent />,
   },
 ];
 
@@ -914,6 +1072,17 @@ const PROMO_SLIDES: SlideDefinition[] = [
       </div>
     ),
     content: <PromoFourContent />,
+  },
+  {
+    id: 'promo-5',
+    anchor: 'promo-try-now',
+    filename: 'trackcode-promo-try-now.png',
+    badge: 'TRACKCODE · TRY NOW',
+    headline: 'Try Now',
+    paddingClass: 'py-12',
+    glowStyle:
+      'radial-gradient(85% 45% at 50% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(48, 209, 88, 0.08) 45%, transparent 100%)',
+    customLayout: <PromoFiveTryNowLayout />,
   },
 ];
 
@@ -1154,6 +1323,9 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
           subtext={activeFullscreenSlide.subtext}
           subtextItalic={activeFullscreenSlide.subtextItalic}
           glowStyle={activeFullscreenSlide.glowStyle}
+          paddingClass={activeFullscreenSlide.paddingClass}
+          customHeader={activeFullscreenSlide.customHeader}
+          customLayout={activeFullscreenSlide.customLayout}
           bottomSlot={activeFullscreenSlide.bottomSlot}
         >
           {activeFullscreenSlide.content}
@@ -1321,7 +1493,11 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
             const isSaved = savedId === slide.id;
 
             return (
-              <div key={slide.id} id={slide.anchor} className="flex flex-col items-center">
+              <div
+                key={slide.id}
+                id={slide.anchor}
+                className="flex flex-col items-center last:md:col-span-2"
+              >
                 <div className="flex w-full justify-center max-[375px]:-mb-8 max-[375px]:origin-top max-[375px]:scale-[0.94]">
                   <StorySlideCard
                     cardRef={(node) => {
@@ -1333,6 +1509,9 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                     subtext={slide.subtext}
                     subtextItalic={slide.subtextItalic}
                     glowStyle={slide.glowStyle}
+                    paddingClass={slide.paddingClass}
+                    customHeader={slide.customHeader}
+                    customLayout={slide.customLayout}
                     bottomSlot={slide.bottomSlot}
                   >
                     {slide.content}
