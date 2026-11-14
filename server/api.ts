@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import { readFile, writeFile } from 'node:fs/promises';
-import type { AlbumType, TrackItem } from '../src/types/track.js';
+import type { AlbumType, ChartRegion, TrackItem } from '../src/types/track.js';
 
 const UPSTREAM_TIMEOUT_MS = 8000;
 
@@ -617,124 +617,634 @@ function shouldFallbackToDeezer(error: unknown): boolean {
 
 const CHART_HISTORY_PATH = '/tmp/trackcode-chart-history.json';
 const CHART_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CHART_FALLBACK_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CHART_HISTORY_DAYS = 14;
+const APPLE_LK_RSS_URL =
+  'https://rss.marketingtools.apple.com/api/v2/lk/music/most-played/15/songs.json';
 
-const BASELINE_CHART_RANKS: Record<string, number> = {
+const BASELINE_GLOBAL_CHART_RANKS: Record<string, number> = {
   USQX92600464: 2,
   QZJ842603468: 1,
   USSM12504190: 3,
   USUG12607376: 6,
   USSM12600141: 4,
   GBARL2400510: 6,
-  USJ5G1714205: 2,
-  USAT21700928: 1,
-  USUM72401994: 3,
-  GBK3W2202321: 5,
-  USRC11300059: 4,
+  USUM72606032: 8,
+  USUG12602391: 7,
+  USUG12607940: 10,
+  USRC12601916: 9,
+  USUG12601723: 12,
+  USUM72601821: 11,
+  USQX92602558: 14,
+  USQX92504224: 13,
+  QZ8BZ2513510: 15,
+};
+
+const BASELINE_SRI_LANKA_CHART_RANKS: Record<string, number> = {
+  SE66N2615962: 2,
+  QTA862682783: 1,
+  USUG12607940: 4,
+  INT202607381: 3,
+  FRX282657409: 6,
+  QZQAY2642281: 5,
+  FR96X2676818: 8,
+  ATR981200299: 7,
+  QZQAY2529877: 10,
+  INT202607391: 9,
+  IND292513785: 12,
+  QMFME2664386: 11,
+  QT6FN2584098: 14,
+  SE6SA2579015: 13,
+  SE6HN2622209: 15,
 };
 
 interface ChartHistoryFile {
-  days: Record<string, Record<string, number>>;
+  days?: Record<string, Record<string, number>>;
+  regions?: Partial<Record<ChartRegion, Record<string, Record<string, number>>>>;
 }
 
-interface DailyChartCacheEntry {
+interface DailyDualChartCacheEntry {
   dateKey: string;
-  tracks: TrackItem[];
+  global: TrackItem[];
+  sriLanka: TrackItem[];
   expiresAt: number;
 }
 
-let dailyChartCache: DailyChartCacheEntry | null = null;
-let inflightDailyChartPromise: Promise<TrackItem[]> | null = null;
+let dailyChartCache: DailyDualChartCacheEntry | null = null;
+let inflightDailyChartPromise: Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> | null = null;
 
 const POPULAR_HITS_FALLBACK_TRACKS: TrackItem[] = [
   {
-    id: '36DPRfPRHwkNKmFSXESAKG',
-    name: 'Scott Street',
-    artists: 'Phoebe Bridgers',
-    primaryArtist: 'Phoebe Bridgers',
-    albumName: 'Stranger in the Alps (Deluxe Edition)',
-    albumType: 'album',
-    releaseYear: '2018',
+    id: 'dz-3818963601',
+    name: 'Dracula (with JENNIE)',
+    artists: 'Tame Impala, JENNIE',
+    primaryArtist: 'Tame Impala',
+    albumName: 'Dracula (with JENNIE)',
+    albumType: 'single',
+    releaseYear: '2026',
     explicit: true,
     albumArt: {
-      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e022a5edd6218037175ddf7c2c8',
-      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b2732a5edd6218037175ddf7c2c8',
+      medium: 'https://cdn-images.dzcdn.net/images/cover/b868399da682f34dcd7d98af1c0de80b/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/b868399da682f34dcd7d98af1c0de80b/500x500-000000-80-0-0.jpg',
     },
-    isrc: 'USJ5G1714205',
-    spotifyUrl: 'https://open.spotify.com/track/36DPRfPRHwkNKmFSXESAKG',
+    isrc: 'USQX92600464',
+    spotifyUrl: 'https://www.deezer.com/track/3818963601',
+    source: 'deezer',
     rank: 1,
     rankChange: 1,
   },
   {
-    id: '5cF0dROlMOK5uNZtivgu50',
-    name: 'Attention',
-    artists: 'Charlie Puth',
-    primaryArtist: 'Charlie Puth',
-    albumName: 'Voicenotes',
-    albumType: 'album',
-    releaseYear: '2018',
+    id: 'dz-3895241341',
+    name: 'Boston',
+    artists: 'STELLA LEFTY',
+    primaryArtist: 'STELLA LEFTY',
+    albumName: 'Boston',
+    albumType: 'single',
+    releaseYear: '2026',
     explicit: false,
     albumArt: {
-      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02897f73256b9128a9d70eaf66',
-      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b273897f73256b9128a9d70eaf66',
+      medium: 'https://cdn-images.dzcdn.net/images/cover/66d6baca9df5092af22a710ce10d39cf/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/66d6baca9df5092af22a710ce10d39cf/500x500-000000-80-0-0.jpg',
     },
-    isrc: 'USAT21700928',
-    spotifyUrl: 'https://open.spotify.com/track/5cF0dROlMOK5uNZtivgu50',
+    isrc: 'QZJ842603468',
+    spotifyUrl: 'https://www.deezer.com/track/3895241341',
+    source: 'deezer',
     rank: 2,
     rankChange: -1,
   },
   {
-    id: '6dOtVTDdiauQNBQEDOtlAB',
-    name: 'BIRDS OF A FEATHER',
-    artists: 'Billie Eilish',
-    primaryArtist: 'Billie Eilish',
-    albumName: 'HIT ME HARD AND SOFT',
-    albumType: 'album',
-    releaseYear: '2024',
+    id: 'dz-3602074142',
+    name: "Choosin' Texas",
+    artists: 'Ella Langley',
+    primaryArtist: 'Ella Langley',
+    albumName: "Choosin' Texas",
+    albumType: 'single',
+    releaseYear: '2025',
     explicit: false,
     albumArt: {
-      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e0271d62ea7ea8a5be92d3c1f62',
-      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b27371d62ea7ea8a5be92d3c1f62',
+      medium: 'https://cdn-images.dzcdn.net/images/cover/749ad2ad7609ec768e342bec41078095/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/749ad2ad7609ec768e342bec41078095/500x500-000000-80-0-0.jpg',
     },
-    isrc: 'USUM72401994',
-    spotifyUrl: 'https://open.spotify.com/track/6dOtVTDdiauQNBQEDOtlAB',
+    isrc: 'USSM12504190',
+    spotifyUrl: 'https://www.deezer.com/track/3602074142',
+    source: 'deezer',
     rank: 3,
     rankChange: 0,
   },
   {
-    id: '1fDFHXcykq4iw8Gg7s5hG9',
-    name: 'About You',
-    artists: 'The 1975',
-    primaryArtist: 'The 1975',
-    albumName: 'Being Funny In A Foreign Language',
-    albumType: 'album',
-    releaseYear: '2022',
+    id: 'dz-4167204822',
+    name: 'Been By Now',
+    artists: 'Morgan Wallen',
+    primaryArtist: 'Morgan Wallen',
+    albumName: 'Been By Now',
+    albumType: 'single',
+    releaseYear: '2026',
     explicit: false,
     albumArt: {
-      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e021f44db452a68e229650a302c',
-      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b2731f44db452a68e229650a302c',
+      medium: 'https://cdn-images.dzcdn.net/images/cover/38e835566214fba0d9f0c71d58e16145/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/38e835566214fba0d9f0c71d58e16145/500x500-000000-80-0-0.jpg',
     },
-    isrc: 'GBK3W2202321',
-    spotifyUrl: 'https://open.spotify.com/track/1fDFHXcykq4iw8Gg7s5hG9',
+    isrc: 'USUG12607376',
+    spotifyUrl: 'https://www.deezer.com/track/4167204822',
+    source: 'deezer',
+    rank: 4,
+    rankChange: 2,
+  },
+  {
+    id: 'dz-3834003271',
+    name: 'Be Her',
+    artists: 'Ella Langley',
+    primaryArtist: 'Ella Langley',
+    albumName: 'Be Her',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/b1bde069e57968a190b0506aef2b6e3e/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/b1bde069e57968a190b0506aef2b6e3e/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USSM12600141',
+    spotifyUrl: 'https://www.deezer.com/track/3834003271',
+    source: 'deezer',
+    rank: 5,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-2758844701',
+    name: 'Stargazing',
+    artists: 'Myles Smith',
+    primaryArtist: 'Myles Smith',
+    albumName: 'Stargazing',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/eaf89238495473e9d78eb75e7a181322/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/eaf89238495473e9d78eb75e7a181322/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'GBARL2400510',
+    spotifyUrl: 'https://www.deezer.com/track/2758844701',
+    source: 'deezer',
+    rank: 6,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-4250696681',
+    name: 'Nicole Kidman',
+    artists: 'ADÉLA',
+    primaryArtist: 'ADÉLA',
+    albumName: 'PRIMA',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/68502d8730fa4ce6a41e2cb4db6d2fb7/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/68502d8730fa4ce6a41e2cb4db6d2fb7/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUM72606032',
+    spotifyUrl: 'https://www.deezer.com/track/4250696681',
+    source: 'deezer',
+    rank: 7,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-4304169612',
+    name: 'Patient Zero',
+    artists: 'Taylor Swift',
+    primaryArtist: 'Taylor Swift',
+    albumName: 'The Life of a Showgirl: The Encore',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/3b43f946f6478daf5233a41414c34067/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/3b43f946f6478daf5233a41414c34067/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12602391',
+    spotifyUrl: 'https://www.deezer.com/track/4304169612',
+    source: 'deezer',
+    rank: 8,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-4208859922',
+    name: 'BbY WOW',
+    artists: 'KAROL G, Judeline, rusowsky',
+    primaryArtist: 'KAROL G',
+    albumName: 'NO ME ARREPIENTO DE SENTIR TANTO',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/f794dd1931dac42fc13f938850b686c6/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/f794dd1931dac42fc13f938850b686c6/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12607940',
+    spotifyUrl: 'https://www.deezer.com/track/4208859922',
+    source: 'deezer',
+    rank: 9,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-4350411742',
+    name: 'Housewife',
+    artists: 'Tate McRae',
+    primaryArtist: 'Tate McRae',
+    albumName: 'Housewife',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/0717657c0f9540946fb9813d3383a500/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/0717657c0f9540946fb9813d3383a500/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USRC12601916',
+    spotifyUrl: 'https://www.deezer.com/track/4350411742',
+    source: 'deezer',
+    rank: 10,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-4078104881',
+    name: 'stupid song',
+    artists: 'Olivia Rodrigo',
+    primaryArtist: 'Olivia Rodrigo',
+    albumName: 'you seem pretty sad for a girl so in love',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/07d6896c8afea3a87dcf9381c3d0e6c7/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/07d6896c8afea3a87dcf9381c3d0e6c7/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12601723',
+    spotifyUrl: 'https://www.deezer.com/track/4078104881',
+    source: 'deezer',
+    rank: 11,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-4045817471',
+    name: 'hate that i made you love me',
+    artists: 'Ariana Grande',
+    primaryArtist: 'Ariana Grande',
+    albumName: 'hate that i made you love me',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/020b1804e8c8a2aba6770f5b2763847b/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/020b1804e8c8a2aba6770f5b2763847b/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUM72601821',
+    spotifyUrl: 'https://www.deezer.com/track/4045817471',
+    source: 'deezer',
+    rank: 12,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-4015341011',
+    name: 'Dai Dai',
+    artists: 'Shakira, Burna Boy',
+    primaryArtist: 'Shakira',
+    albumName: 'Dai Dai',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/a7f9bae0243c512059298a68d09f45a1/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/a7f9bae0243c512059298a68d09f45a1/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USQX92602558',
+    spotifyUrl: 'https://www.deezer.com/track/4015341011',
+    source: 'deezer',
+    rank: 13,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-3602329332',
+    name: 'Loser',
+    artists: 'Tame Impala',
+    primaryArtist: 'Tame Impala',
+    albumName: 'Deadbeat',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/23b006b2e956536d97612847bbd7a3b7/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/23b006b2e956536d97612847bbd7a3b7/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USQX92504224',
+    spotifyUrl: 'https://www.deezer.com/track/3602329332',
+    source: 'deezer',
+    rank: 14,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-3412534581',
+    name: 'Golden',
+    artists: 'HUNTR/X, EJAE, AUDREY NUNA, REI AMI, KPop Demon Hunters Cast',
+    primaryArtist: 'HUNTR/X',
+    albumName: 'KPop Demon Hunters (Soundtrack from the Netflix Film)',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/e54bda0628749119f7a9a05b71b40283/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/e54bda0628749119f7a9a05b71b40283/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QZ8BZ2513510',
+    spotifyUrl: 'https://www.deezer.com/track/3412534581',
+    source: 'deezer',
+    rank: 15,
+    rankChange: 'NEW',
+  },
+];
+
+const SRI_LANKA_FALLBACK_TRACKS: TrackItem[] = [
+  {
+    id: 'dz-4384883221',
+    name: 'Noyanu Hitha Ma',
+    artists: 'Uvindu Ayshcharya, Dilu Beats',
+    primaryArtist: 'Uvindu Ayshcharya',
+    albumName: 'Noyanu Hitha Ma',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/c10ea0c9c6f6f0f2db4ec91634d5e616/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/c10ea0c9c6f6f0f2db4ec91634d5e616/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'SE66N2615962',
+    spotifyUrl: 'https://www.deezer.com/track/4384883221',
+    source: 'deezer',
+    rank: 1,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-4373796001',
+    name: 'Guru Pata Handewa',
+    artists: 'Sereena Batagoda',
+    primaryArtist: 'Sereena Batagoda',
+    albumName: 'Guru Pata Handewa',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/69ec2b63d867e8380e28bc2de11c07c0/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/69ec2b63d867e8380e28bc2de11c07c0/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QTA862682783',
+    spotifyUrl: 'https://www.deezer.com/track/4373796001',
+    source: 'deezer',
+    rank: 2,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-4328164292',
+    name: 'Nura Ananthe',
+    artists: 'Cozzy, Kshia',
+    primaryArtist: 'Cozzy',
+    albumName: 'Nura Ananthe',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/950751727c896cf68900be866202feef/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/950751727c896cf68900be866202feef/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'FRX282657409',
+    spotifyUrl: 'https://www.deezer.com/track/4328164292',
+    source: 'deezer',
+    rank: 3,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-4264287982',
+    name: 'Bowitiya Mal',
+    artists: 'Ravi Jay, Nipuni Sharada',
+    primaryArtist: 'Ravi Jay',
+    albumName: 'Bowitiya Mal',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/b8fa9a2fbca44715396e3cfdd75790d7/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/b8fa9a2fbca44715396e3cfdd75790d7/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QZQAY2642281',
+    spotifyUrl: 'https://www.deezer.com/track/4264287982',
+    source: 'deezer',
     rank: 4,
     rankChange: 1,
   },
   {
-    id: '4rHZZAmHpZrA3iH5zx8frV',
-    name: 'Mirrors',
-    artists: 'Justin Timberlake',
-    primaryArtist: 'Justin Timberlake',
-    albumName: 'The 20/20 Experience (Deluxe Version)',
-    albumType: 'album',
-    releaseYear: '2013',
+    id: 'dz-4002273351',
+    name: 'Mandaaram Handaawe',
+    artists: 'Channuka, Cozzy',
+    primaryArtist: 'Channuka',
+    albumName: 'Mandaaram Handaawe',
+    albumType: 'single',
+    releaseYear: '2026',
     explicit: false,
     albumArt: {
-      medium: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e0256d5fb0cc9cec001d8ae0c8c',
-      large: 'https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b27356d5fb0cc9cec001d8ae0c8c',
+      medium: 'https://cdn-images.dzcdn.net/images/cover/3694e0fee5036d636fdd1587369b23f2/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/3694e0fee5036d636fdd1587369b23f2/500x500-000000-80-0-0.jpg',
     },
-    isrc: 'USRC11300059',
-    spotifyUrl: 'https://open.spotify.com/track/4rHZZAmHpZrA3iH5zx8frV',
+    isrc: 'FR96X2676818',
+    spotifyUrl: 'https://www.deezer.com/track/4002273351',
+    source: 'deezer',
     rank: 5,
+    rankChange: 2,
+  },
+  {
+    id: 'dz-2576424452',
+    name: 'Sansarini',
+    artists: 'Yasas Medagedara',
+    primaryArtist: 'Yasas Medagedara',
+    albumName: 'Sansarini',
+    albumType: 'single',
+    releaseYear: '2019',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/b0871217507a48729831a4d90dd43d14/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/b0871217507a48729831a4d90dd43d14/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'ATR981200299',
+    spotifyUrl: 'https://www.deezer.com/track/2576424452',
+    source: 'deezer',
+    rank: 6,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-3284205681',
+    name: 'Oba Maage Aadare',
+    artists: 'Channuka, Cozzy',
+    primaryArtist: 'Channuka',
+    albumName: 'Oba Maage Aadare',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/738bd109665de65a1e3c5c4903e2a9e8/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/738bd109665de65a1e3c5c4903e2a9e8/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QZQAY2529877',
+    spotifyUrl: 'https://www.deezer.com/track/3284205681',
+    source: 'deezer',
+    rank: 7,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-3722664782',
+    name: 'Bo Mal (feat. Ranudi de Zoysa)',
+    artists: 'janana, Ranudi De Zoysa',
+    primaryArtist: 'janana',
+    albumName: 'Bo Mal (feat. Ranudi de Zoysa)',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/8d9bc98bd6b1bd52fb87b01f2e708a67/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/8d9bc98bd6b1bd52fb87b01f2e708a67/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QT6FN2584098',
+    spotifyUrl: 'https://www.deezer.com/track/3722664782',
+    source: 'deezer',
+    rank: 8,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-3596389352',
+    name: 'Me Hitha Sanasa',
+    artists: 'Uvindu Ayshcharya, Dilu Beats',
+    primaryArtist: 'Uvindu Ayshcharya',
+    albumName: 'Me Hitha Sanasa',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/4353ac09f192cffb6e7b80f596c3e4be/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/4353ac09f192cffb6e7b80f596c3e4be/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'SE6SA2579015',
+    spotifyUrl: 'https://www.deezer.com/track/3596389352',
+    source: 'deezer',
+    rank: 9,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-3915183491',
+    name: 'Api Aye Hamuwela',
+    artists: 'Uvindu Ayshcharya, Dilu Beats',
+    primaryArtist: 'Uvindu Ayshcharya',
+    albumName: 'Api Aye Hamuwela',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/9eaeb474b4bc2160303eb08ceba4fbf3/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/9eaeb474b4bc2160303eb08ceba4fbf3/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'SE6HN2622209',
+    spotifyUrl: 'https://www.deezer.com/track/3915183491',
+    source: 'deezer',
+    rank: 10,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-2129182507',
+    name: 'Numba Ha',
+    artists: 'Dilu Beats',
+    primaryArtist: 'Dilu Beats',
+    albumName: 'Numba Ha',
+    albumType: 'single',
+    releaseYear: '2023',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/a8e586fa377fc3716afd1df54160d8ea/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/a8e586fa377fc3716afd1df54160d8ea/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'SE5BU2363737',
+    spotifyUrl: 'https://www.deezer.com/track/2129182507',
+    source: 'deezer',
+    rank: 11,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-639609212',
+    name: 'Saragaye',
+    artists: 'SANUKA',
+    primaryArtist: 'SANUKA',
+    albumName: 'Saragaye',
+    albumType: 'single',
+    releaseYear: '2019',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/fe6c49a84905c1f61d1335bc9372462c/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/fe6c49a84905c1f61d1335bc9372462c/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'ATR981194414',
+    spotifyUrl: 'https://www.deezer.com/track/639609212',
+    source: 'deezer',
+    rank: 12,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-1398346782',
+    name: 'Manike Mage Hithe',
+    artists: 'Chamath Sangeeth, Yohani, Satheeshan',
+    primaryArtist: 'Chamath Sangeeth',
+    albumName: 'Manike Mage Hithe',
+    albumType: 'single',
+    releaseYear: '2021',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/01c20272f58f33c9a20416c3b46f7919/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/01c20272f58f33c9a20416c3b46f7919/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'ATR981232884',
+    spotifyUrl: 'https://www.deezer.com/track/1398346782',
+    source: 'deezer',
+    rank: 13,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-4275410732',
+    name: 'Magale (From "Baththa")',
+    artists: 'Sai Abhyankkar, Harini, Karthik Netha',
+    primaryArtist: 'Sai Abhyankkar',
+    albumName: 'Magale (From "Baththa")',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/237407002fc9a79781638cf99d2f8f73/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/237407002fc9a79781638cf99d2f8f73/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'INT202607391',
+    spotifyUrl: 'https://www.deezer.com/track/4275410732',
+    source: 'deezer',
+    rank: 14,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-4319474642',
+    name: 'One Name',
+    artists: 'Anirudh Ravichander, Super Subu',
+    primaryArtist: 'Anirudh Ravichander',
+    albumName: 'Jailer 2 (Original Motion Picture Soundtrack)',
+    albumType: 'single',
+    releaseYear: '2026',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/5e1cf215697b2c9b1bd73198a4ddd231/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/5e1cf215697b2c9b1bd73198a4ddd231/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QMFME2664386',
+    spotifyUrl: 'https://www.deezer.com/track/4319474642',
+    source: 'deezer',
+    rank: 15,
     rankChange: 'NEW',
   },
 ];
@@ -747,42 +1257,130 @@ function getChartTrackKey(track: TrackItem): string {
   return track.isrc?.trim().toUpperCase() || track.id;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchDeezerJson<T extends { error?: { code?: number } }>(
+  url: string
+): Promise<T | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        if (attempt === 0) {
+          await sleep(300);
+          continue;
+        }
+        return null;
+      }
+      const data = (await res.json()) as T;
+      if (data && data.error?.code === 4 && attempt === 0) {
+        await sleep(350);
+        continue;
+      }
+      return data;
+    } catch {
+      if (attempt === 0) {
+        await sleep(250);
+      }
+    }
+  }
+  return null;
+}
+
+async function mapInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  delayMs: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+    if (i + batchSize < items.length) {
+      await sleep(delayMs);
+    }
+  }
+  return results;
+}
+
 async function readChartHistory(): Promise<ChartHistoryFile> {
   try {
     const raw = await readFile(CHART_HISTORY_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as Partial<ChartHistoryFile>;
-    if (parsed && typeof parsed.days === 'object' && parsed.days !== null) {
-      return { days: parsed.days };
+    const parsed = JSON.parse(raw) as ChartHistoryFile;
+    if (parsed && typeof parsed === 'object') {
+      return {
+        days: parsed.days && typeof parsed.days === 'object' ? parsed.days : {},
+        regions: parsed.regions && typeof parsed.regions === 'object' ? parsed.regions : {},
+      };
     }
   } catch {
     // Missing or unreadable snapshot file on cold start
   }
-  return { days: {} };
+  return { days: {}, regions: {} };
+}
+
+function trimChartDays(
+  days: Record<string, Record<string, number>>
+): Record<string, Record<string, number>> {
+  const sortedDates = Object.keys(days).sort();
+  const trimmed: Record<string, Record<string, number>> = {};
+  for (const dateKey of sortedDates.slice(-MAX_CHART_HISTORY_DAYS)) {
+    trimmed[dateKey] = days[dateKey];
+  }
+  return trimmed;
 }
 
 async function writeChartHistory(history: ChartHistoryFile): Promise<void> {
   try {
-    const sortedDates = Object.keys(history.days).sort();
-    const trimmedDays: Record<string, Record<string, number>> = {};
-    for (const dateKey of sortedDates.slice(-MAX_CHART_HISTORY_DAYS)) {
-      trimmedDays[dateKey] = history.days[dateKey];
+    const trimmedRegions: Partial<Record<ChartRegion, Record<string, Record<string, number>>>> = {};
+    if (history.regions?.global) {
+      trimmedRegions.global = trimChartDays(history.regions.global);
     }
-    await writeFile(CHART_HISTORY_PATH, JSON.stringify({ days: trimmedDays }), 'utf8');
+    if (history.regions?.sriLanka) {
+      trimmedRegions.sriLanka = trimChartDays(history.regions.sriLanka);
+    }
+    await writeFile(
+      CHART_HISTORY_PATH,
+      JSON.stringify({
+        days: trimChartDays(history.days ?? {}),
+        regions: trimmedRegions,
+      }),
+      'utf8'
+    );
   } catch {
     // Ignore read-only filesystem errors
   }
 }
 
-async function applyChartRankHistory(rawTracks: TrackItem[], dateKey: string): Promise<TrackItem[]> {
-  const history = await readChartHistory();
-  const previousDates = Object.keys(history.days)
+function rankTracksForRegion(
+  rawTracks: TrackItem[],
+  region: ChartRegion,
+  history: ChartHistoryFile,
+  dateKey: string
+): { ranked: TrackItem[]; todayRanks: Record<string, number>; changed: boolean } {
+  const regionHistory: Record<string, Record<string, number>> = {
+    ...(region === 'global' ? history.days : undefined),
+    ...history.regions?.[region],
+  };
+
+  const previousDates = Object.keys(regionHistory)
     .filter((d) => d < dateKey)
     .sort();
   const previousDayKey = previousDates[previousDates.length - 1];
-  const previousRanks = previousDayKey ? history.days[previousDayKey] : BASELINE_CHART_RANKS;
+  const previousRanks = previousDayKey
+    ? regionHistory[previousDayKey]
+    : region === 'global'
+      ? BASELINE_GLOBAL_CHART_RANKS
+      : BASELINE_SRI_LANKA_CHART_RANKS;
 
   const todayRanks: Record<string, number> = {};
-  const rankedTracks = rawTracks.map((track, index) => {
+  const ranked = rawTracks.map((track, index) => {
     const rank = index + 1;
     const key = getChartTrackKey(track);
     todayRanks[key] = rank;
@@ -798,18 +1396,190 @@ async function applyChartRankHistory(rawTracks: TrackItem[], dateKey: string): P
     };
   });
 
-  if (!history.days[dateKey]) {
-    history.days[dateKey] = todayRanks;
+  const changed = !history.regions?.[region]?.[dateKey];
+  return { ranked, todayRanks, changed };
+}
+
+async function applyDualChartRankHistory(
+  rawGlobal: TrackItem[],
+  rawSriLanka: TrackItem[],
+  dateKey: string
+): Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> {
+  const history = await readChartHistory();
+  if (!history.regions) history.regions = {};
+
+  const globalOutcome = rankTracksForRegion(rawGlobal, 'global', history, dateKey);
+  const sriLankaOutcome = rankTracksForRegion(rawSriLanka, 'sriLanka', history, dateKey);
+
+  if (globalOutcome.changed || sriLankaOutcome.changed) {
+    if (globalOutcome.changed) {
+      history.regions.global = {
+        ...(history.regions.global ?? {}),
+        [dateKey]: globalOutcome.todayRanks,
+      };
+    }
+    if (sriLankaOutcome.changed) {
+      history.regions.sriLanka = {
+        ...(history.regions.sriLanka ?? {}),
+        [dateKey]: sriLankaOutcome.todayRanks,
+      };
+    }
     await writeChartHistory(history);
   }
 
-  return rankedTracks;
+  return {
+    global: globalOutcome.ranked,
+    sriLanka: sriLankaOutcome.ranked,
+  };
 }
 
-async function fetchDailyTopChartTracks(): Promise<TrackItem[]> {
+async function fetchRawGlobalChartTracks(): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+  try {
+    const chartPayload = await fetchDeezerJson<{
+      data?: DeezerSearchTrack[];
+      error?: { code?: number };
+    }>('https://api.deezer.com/chart/0/tracks?limit=15');
+    const chartEntries = Array.isArray(chartPayload?.data) ? chartPayload.data.slice(0, 15) : [];
+    if (chartEntries.length === 0) {
+      throw new Error('DEEZER_CHART_EMPTY');
+    }
+
+    const detailResults = await mapInBatches(chartEntries, 5, 120, async (item): Promise<TrackItem | null> => {
+      const detail = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+        `https://api.deezer.com/track/${item.id}`
+      );
+      if (!detail || detail.error || !detail.id) return null;
+      return normalizeDeezerTrack(detail);
+    });
+
+    const tracks = detailResults.filter((t): t is TrackItem => Boolean(t));
+    if (tracks.length < 5) {
+      throw new Error('DEEZER_CHART_NO_DETAILS');
+    }
+
+    return { tracks, usedFallback: false };
+  } catch {
+    return { tracks: POPULAR_HITS_FALLBACK_TRACKS, usedFallback: true };
+  }
+}
+
+interface AppleRssSong {
+  id: string;
+  name: string;
+  artistName: string;
+  releaseDate?: string;
+  artworkUrl100?: string;
+  contentAdvisoryRating?: string;
+  url?: string;
+}
+
+function cleanAppleSongTitle(title: string): string {
+  return title
+    .replace(/\s*[\(\[][^\)\]]*(?:feat\.|ft\.|from|with|remix)[^\)\]]*[\)\]]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function upscaleAppleArtwork(url: string | undefined, size: number): string | null {
+  if (!url) return null;
+  return url.replace(/\/\d+x\d+bb(\.[a-z]+)$/i, `/${size}x${size}bb$1`);
+}
+
+async function resolveAppleSongViaDeezer(song: AppleRssSong): Promise<TrackItem | null> {
+  const cleanTitle = cleanAppleSongTitle(song.name);
+  const primaryArtist = song.artistName.split(/[,&]/)[0]?.trim() || song.artistName.trim();
+  const queryCandidates = Array.from(
+    new Set(
+      [
+        `${primaryArtist} ${cleanTitle}`.trim(),
+        `${song.artistName} ${song.name}`.trim(),
+        cleanTitle,
+      ].filter(Boolean)
+    )
+  );
+
+  for (const searchQuery of queryCandidates) {
+    const searchJson = await fetchDeezerJson<{
+      data?: DeezerSearchTrack[];
+      error?: { code?: number };
+    }>(`https://api.deezer.com/search?q=${encodeURIComponent(searchQuery)}&limit=1`);
+    const topMatch = Array.isArray(searchJson?.data) ? searchJson.data[0] : undefined;
+    if (!topMatch?.id) continue;
+
+    const detail = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+      `https://api.deezer.com/track/${topMatch.id}`
+    );
+
+    const appleMedium = upscaleAppleArtwork(song.artworkUrl100, 300);
+    const appleLarge = upscaleAppleArtwork(song.artworkUrl100, 600);
+    const appleYear = (song.releaseDate ?? '').match(/^(\d{4})/)?.[1] ?? '';
+
+    if (detail && !detail.error && detail.id) {
+      const normalized = normalizeDeezerTrack(detail);
+      return {
+        ...normalized,
+        releaseYear: normalized.releaseYear || appleYear,
+        explicit: normalized.explicit || song.contentAdvisoryRating === 'Explicit',
+        albumArt: {
+          medium: normalized.albumArt.medium || appleMedium,
+          large: normalized.albumArt.large || appleLarge,
+        },
+      };
+    }
+
+    const basicNormalized = normalizeDeezerTrack(topMatch);
+    return {
+      ...basicNormalized,
+      releaseYear: basicNormalized.releaseYear || appleYear,
+      explicit: basicNormalized.explicit || song.contentAdvisoryRating === 'Explicit',
+      albumArt: {
+        medium: basicNormalized.albumArt.medium || appleMedium,
+        large: basicNormalized.albumArt.large || appleLarge,
+      },
+    };
+  }
+
+  return null;
+}
+
+async function fetchRawSriLankaChartTracks(): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+  try {
+    const rssRes = await fetch(APPLE_LK_RSS_URL, {
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!rssRes.ok) {
+      throw new Error(`APPLE_LK_RSS_ERROR:${rssRes.status}`);
+    }
+
+    const rssPayload = (await rssRes.json()) as {
+      feed?: { results?: AppleRssSong[] };
+    };
+    const appleSongs = Array.isArray(rssPayload.feed?.results)
+      ? rssPayload.feed.results.slice(0, 15)
+      : [];
+    if (appleSongs.length < 4) {
+      throw new Error('APPLE_LK_RSS_INSUFFICIENT');
+    }
+
+    const resolvedResults = await mapInBatches(appleSongs, 5, 140, (song) =>
+      resolveAppleSongViaDeezer(song)
+    );
+    const resolvedTracks = resolvedResults.filter((t): t is TrackItem => Boolean(t));
+
+    if (resolvedTracks.length < 4) {
+      throw new Error('SRI_LANKA_DEEZER_INSUFFICIENT');
+    }
+
+    return { tracks: resolvedTracks, usedFallback: false };
+  } catch {
+    return { tracks: SRI_LANKA_FALLBACK_TRACKS, usedFallback: true };
+  }
+}
+
+async function fetchDailyDualCharts(): Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> {
   const todayKey = getUtcDateKey();
   if (dailyChartCache && dailyChartCache.dateKey === todayKey && dailyChartCache.expiresAt > Date.now()) {
-    return dailyChartCache.tracks;
+    return { global: dailyChartCache.global, sriLanka: dailyChartCache.sriLanka };
   }
 
   if (inflightDailyChartPromise) {
@@ -817,51 +1587,25 @@ async function fetchDailyTopChartTracks(): Promise<TrackItem[]> {
   }
 
   inflightDailyChartPromise = (async () => {
-    try {
-      const chartRes = await fetch('https://api.deezer.com/chart/0/tracks?limit=8', {
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-      if (!chartRes.ok) {
-        throw new Error(`DEEZER_CHART_ERROR:${chartRes.status}`);
-      }
+    const globalResult = await fetchRawGlobalChartTracks();
+    await sleep(150);
+    const sriLankaResult = await fetchRawSriLankaChartTracks();
 
-      const chartPayload = (await chartRes.json()) as { data?: DeezerSearchTrack[] };
-      const chartEntries = Array.isArray(chartPayload.data) ? chartPayload.data.slice(0, 8) : [];
-      if (chartEntries.length === 0) {
-        throw new Error('DEEZER_CHART_EMPTY');
-      }
+    const ranked = await applyDualChartRankHistory(
+      globalResult.tracks,
+      sriLankaResult.tracks,
+      todayKey
+    );
 
-      const detailResults = await Promise.all(
-        chartEntries.map(async (item): Promise<TrackItem | null> => {
-          try {
-            const detailRes = await fetch(`https://api.deezer.com/track/${item.id}`, {
-              signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-            });
-            if (!detailRes.ok) return null;
-            const detail = (await detailRes.json()) as DeezerTrackDetail & { error?: unknown };
-            if (!detail || detail.error || !detail.id) return null;
-            return normalizeDeezerTrack(detail);
-          } catch {
-            return null;
-          }
-        })
-      );
+    const anyFallback = globalResult.usedFallback || sriLankaResult.usedFallback;
+    dailyChartCache = {
+      dateKey: todayKey,
+      global: ranked.global,
+      sriLanka: ranked.sriLanka,
+      expiresAt: Date.now() + (anyFallback ? CHART_FALLBACK_CACHE_TTL_MS : CHART_CACHE_TTL_MS),
+    };
 
-      const tracks = detailResults.filter((t): t is TrackItem => Boolean(t));
-      if (tracks.length === 0) {
-        throw new Error('DEEZER_CHART_NO_DETAILS');
-      }
-
-      const rankedTracks = await applyChartRankHistory(tracks, todayKey);
-      dailyChartCache = {
-        dateKey: todayKey,
-        tracks: rankedTracks,
-        expiresAt: Date.now() + CHART_CACHE_TTL_MS,
-      };
-      return rankedTracks;
-    } catch {
-      return POPULAR_HITS_FALLBACK_TRACKS;
-    }
+    return ranked;
   })();
 
   try {
@@ -880,9 +1624,13 @@ app.get('/api/health', (_req: Request, res: Response) => {
 });
 
 app.get('/api/quick-try', async (_req: Request, res: Response) => {
-  const tracks = await fetchDailyTopChartTracks();
+  const charts = await fetchDailyDualCharts();
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=172800');
-  res.json({ tracks, updatedAt: getUtcDateKey() });
+  res.json({
+    global: charts.global,
+    sriLanka: charts.sriLanka,
+    updatedAt: getUtcDateKey(),
+  });
 });
 
 export async function resolveTrackIsrc(

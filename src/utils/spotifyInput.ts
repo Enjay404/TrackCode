@@ -1,10 +1,10 @@
-import type { CachedSearchResult, TrackItem } from '../types/track';
+import type { CachedSearchResult, ChartRegion, TrackItem } from '../types/track';
 
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
 const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v2';
-const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v3';
-const CHART_HISTORY_STORAGE_KEY = 'trackcode_chart_history_v1';
+const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v4';
+const CHART_HISTORY_STORAGE_KEY = 'trackcode_chart_history_v2';
 const ISRC_CACHE_STORAGE_KEY = 'trackcode_isrc_cache_v1';
 const MAX_RECENT_TRACKS = 8;
 const MAX_SEARCH_CACHE_ENTRIES = 40;
@@ -195,27 +195,42 @@ export function hydrateTracksWithCachedIsrc(tracks: TrackItem[]): TrackItem[] {
   });
 }
 
-export function loadCachedQuickTryTracks(): TrackItem[] {
+export interface CachedQuickTryCharts {
+  global: TrackItem[];
+  sriLanka: TrackItem[];
+}
+
+export function loadCachedQuickTryCharts(): CachedQuickTryCharts {
   try {
     const raw = localStorage.getItem(QUICK_TRY_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TrackItem[]) : [];
+    if (!raw) return { global: [], sriLanka: [] };
+    const parsed = JSON.parse(raw) as Partial<CachedQuickTryCharts>;
+    return {
+      global: Array.isArray(parsed?.global) ? (parsed.global as TrackItem[]) : [],
+      sriLanka: Array.isArray(parsed?.sriLanka) ? (parsed.sriLanka as TrackItem[]) : [],
+    };
   } catch {
-    return [];
+    return { global: [], sriLanka: [] };
   }
 }
 
-export function saveCachedQuickTryTracks(tracks: TrackItem[]): void {
-  if (!Array.isArray(tracks) || tracks.length === 0) return;
+export function saveCachedQuickTryCharts(charts: CachedQuickTryCharts): void {
+  if (charts.global.length === 0 && charts.sriLanka.length === 0) return;
   try {
-    localStorage.setItem(QUICK_TRY_STORAGE_KEY, JSON.stringify(tracks));
+    localStorage.setItem(QUICK_TRY_STORAGE_KEY, JSON.stringify(charts));
   } catch {
     // Ignore storage quota errors
   }
 }
 
-export function syncQuickTryChartHistory(tracks: TrackItem[]): TrackItem[] {
+interface StoredChartHistory {
+  regions?: Partial<Record<ChartRegion, Record<string, Record<string, number>>>>;
+}
+
+export function syncQuickTryChartHistory(
+  tracks: TrackItem[],
+  region: ChartRegion = 'global'
+): TrackItem[] {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks;
 
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -227,9 +242,12 @@ export function syncQuickTryChartHistory(tracks: TrackItem[]): TrackItem[] {
 
   try {
     const raw = localStorage.getItem(CHART_HISTORY_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as { days?: Record<string, Record<string, number>> }) : {};
-    const days: Record<string, Record<string, number>> =
-      parsed && typeof parsed.days === 'object' && parsed.days !== null ? parsed.days : {};
+    const parsed = raw ? (JSON.parse(raw) as StoredChartHistory) : {};
+    const regions: Partial<Record<ChartRegion, Record<string, Record<string, number>>>> =
+      parsed && typeof parsed.regions === 'object' && parsed.regions !== null
+        ? parsed.regions
+        : {};
+    const days: Record<string, Record<string, number>> = regions[region] ?? {};
 
     const previousDates = Object.keys(days)
       .filter((d) => d < todayKey)
@@ -253,7 +271,8 @@ export function syncQuickTryChartHistory(tracks: TrackItem[]): TrackItem[] {
     for (const dateKey of Object.keys(days).sort().slice(-14)) {
       trimmedDays[dateKey] = days[dateKey];
     }
-    localStorage.setItem(CHART_HISTORY_STORAGE_KEY, JSON.stringify({ days: trimmedDays }));
+    regions[region] = trimmedDays;
+    localStorage.setItem(CHART_HISTORY_STORAGE_KEY, JSON.stringify({ regions }));
     return syncedTracks;
   } catch {
     return tracks;

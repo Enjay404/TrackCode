@@ -42,6 +42,14 @@ export interface TrackApiResponse {
   deezerHealthy?: boolean;
 }
 
+export type ChartRegion = 'global' | 'sriLanka';
+
+export interface QuickTryApiResponse {
+  global: TrackItem[];
+  sriLanka: TrackItem[];
+  updatedAt?: string;
+}
+
 export interface CachedSearchResult {
   tracks: TrackItem[];
   source?: 'spotify' | 'deezer';

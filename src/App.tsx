@@ -1,8 +1,11 @@
 import { Analytics } from '@vercel/analytics/react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  ChevronDown,
+  ChevronUp,
   ClipboardPaste,
   Copy,
+  Globe,
   Link2,
   RotateCcw,
   Search,
@@ -11,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  type ReactNode,
   Suspense,
   lazy,
   memo,
@@ -31,6 +35,8 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import type {
   ApiHealthStatus,
   ApiStatusState,
+  ChartRegion,
+  QuickTryApiResponse,
   SearchApiResponse,
   TrackApiResponse,
   TrackItem,
@@ -44,9 +50,9 @@ import {
   getCachedTrackIsrc,
   hydrateTracksWithCachedIsrc,
   isSpotifyTrackLink,
-  loadCachedQuickTryTracks,
+  loadCachedQuickTryCharts,
   loadRecentTracks,
-  saveCachedQuickTryTracks,
+  saveCachedQuickTryCharts,
   saveRecentTrack,
   setCachedSearchResult,
   setCachedTrackIsrc,
@@ -80,9 +86,67 @@ function useIsDesktop(): boolean {
   return isDesktop;
 }
 
+const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
+  region,
+  onChange,
+}: {
+  region: ChartRegion;
+  onChange: (next: ChartRegion) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Popular Hits region"
+      className="relative mb-3 grid w-full grid-cols-2 rounded-2xl border border-white/[0.08] bg-[#131315] p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)]"
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          transform:
+            region === 'global' ? 'translate3d(0%, 0, 0)' : 'translate3d(100%, 0, 0)',
+        }}
+        className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+      />
+
+      <button
+        type="button"
+        role="tab"
+        aria-selected={region === 'global'}
+        onClick={() => onChange('global')}
+        className={`relative z-10 flex min-h-[36px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+          region === 'global'
+            ? 'font-semibold text-white'
+            : 'font-medium text-white/50 hover:text-white/80'
+        }`}
+      >
+        <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>Global</span>
+      </button>
+
+      <button
+        type="button"
+        role="tab"
+        aria-selected={region === 'sriLanka'}
+        onClick={() => onChange('sriLanka')}
+        className={`relative z-10 flex min-h-[36px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+          region === 'sriLanka'
+            ? 'font-semibold text-white'
+            : 'font-medium text-white/50 hover:text-white/80'
+        }`}
+      >
+        <SriLankaFlag />
+        <span>Sri Lanka</span>
+      </button>
+    </div>
+  );
+});
+
 interface TrackListSectionProps {
   title: string;
   subtitle?: string;
+  headerControl?: ReactNode;
+  footerControl?: ReactNode;
+  listKeyPrefix?: string;
   ariaLabel: string;
   tracks: TrackItem[];
   selectedTrackId?: string | null;
@@ -96,6 +160,9 @@ interface TrackListSectionProps {
 const TrackListSection = memo(function TrackListSection({
   title,
   subtitle,
+  headerControl,
+  footerControl,
+  listKeyPrefix,
   ariaLabel,
   tracks,
   selectedTrackId = null,
@@ -125,13 +192,14 @@ const TrackListSection = memo(function TrackListSection({
           </span>
         ) : null}
       </div>
+      {headerControl}
       <div className="touch-pan-y space-y-2">
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
           tracks.map((track, index) => (
             <TrackRow
-              key={track.id}
+              key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
               track={track}
               index={index}
               isSelected={selectedTrackId === track.id}
@@ -141,6 +209,7 @@ const TrackListSection = memo(function TrackListSection({
           ))
         )}
       </div>
+      {!isLoading && footerControl}
     </section>
   );
 });
@@ -238,12 +307,24 @@ function TrackCodeWorkspace() {
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const [quickTryTracks, setQuickTryTracks] = useState<TrackItem[]>(() =>
-    loadCachedQuickTryTracks()
+  const [popularRegion, setPopularRegion] = useState<ChartRegion>('global');
+  const [showAllHits, setShowAllHits] = useState(false);
+  const [quickTryCharts, setQuickTryCharts] = useState(() => loadCachedQuickTryCharts());
+  const [isQuickTryLoading, setIsQuickTryLoading] = useState(() => {
+    const cached = loadCachedQuickTryCharts();
+    return cached.global.length === 0 && cached.sriLanka.length === 0;
+  });
+  const activeQuickTryTracks =
+    popularRegion === 'global' ? quickTryCharts.global : quickTryCharts.sriLanka;
+  const displayedQuickTryTracks = useMemo(
+    () => (showAllHits ? activeQuickTryTracks : activeQuickTryTracks.slice(0, 5)),
+    [activeQuickTryTracks, showAllHits]
   );
-  const [isQuickTryLoading, setIsQuickTryLoading] = useState(() =>
-    loadCachedQuickTryTracks().length === 0
-  );
+
+  const handleRegionChange = useCallback((nextRegion: ChartRegion) => {
+    setPopularRegion(nextRegion);
+    setShowAllHits(false);
+  }, []);
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
   const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
@@ -277,24 +358,24 @@ function TrackCodeWorkspace() {
     }
     const seen = new Set<string>();
     const combined: TrackItem[] = [];
-    for (const item of [...recentTracks, ...quickTryTracks]) {
+    for (const item of [...recentTracks, ...displayedQuickTryTracks]) {
       if (!seen.has(item.id)) {
         seen.add(item.id);
         combined.push(item);
       }
     }
     return combined;
-  }, [trimmedQuery, results, recentTracks, quickTryTracks]);
+  }, [trimmedQuery, results, recentTracks, displayedQuickTryTracks]);
 
   const activeDesktopTrack = useMemo(() => {
     if (inspectedTrack && visibleTracks.some((t) => t.id === inspectedTrack.id)) {
       return inspectedTrack;
     }
     if (trimmedQuery && results.length === 0) {
-      return inspectedTrack ?? recentTracks[0] ?? quickTryTracks[0] ?? null;
+      return inspectedTrack ?? recentTracks[0] ?? displayedQuickTryTracks[0] ?? null;
     }
     return visibleTracks[0] ?? inspectedTrack ?? null;
-  }, [inspectedTrack, visibleTracks, trimmedQuery, results.length, recentTracks, quickTryTracks]);
+  }, [inspectedTrack, visibleTracks, trimmedQuery, results.length, recentTracks, displayedQuickTryTracks]);
 
   const showToast = useCallback((message: string, tone: ToastState['tone'] = 'success') => {
     if (toastTimerRef.current) {
@@ -311,11 +392,19 @@ function TrackCodeWorkspace() {
 
     fetch('/api/quick-try')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { tracks?: TrackItem[] } | null) => {
-        if (!cancelled && data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-          const synced = syncQuickTryChartHistory(data.tracks);
-          setQuickTryTracks(synced);
-          saveCachedQuickTryTracks(synced);
+      .then((data: QuickTryApiResponse | null) => {
+        if (!cancelled && data) {
+          const rawGlobal = Array.isArray(data.global) ? data.global : [];
+          const rawSriLanka = Array.isArray(data.sriLanka) ? data.sriLanka : [];
+          if (rawGlobal.length > 0 || rawSriLanka.length > 0) {
+            const nextCharts = {
+              global: rawGlobal.length > 0 ? syncQuickTryChartHistory(rawGlobal, 'global') : [],
+              sriLanka:
+                rawSriLanka.length > 0 ? syncQuickTryChartHistory(rawSriLanka, 'sriLanka') : [],
+            };
+            setQuickTryCharts(nextCharts);
+            saveCachedQuickTryCharts(nextCharts);
+          }
         }
       })
       .catch(() => {
@@ -1245,16 +1334,41 @@ function TrackCodeWorkspace() {
                     )}
 
                     {/* Popular Hits Liquid Glass Capsules */}
-                    {(isQuickTryLoading || quickTryTracks.length > 0) && (
+                    {(isQuickTryLoading ||
+                      quickTryCharts.global.length > 0 ||
+                      quickTryCharts.sriLanka.length > 0) && (
                       <TrackListSection
                         title="POPULAR HITS"
                         subtitle="UPDATED DAILY"
+                        headerControl={
+                          <RegionSegmentedToggle
+                            region={popularRegion}
+                            onChange={handleRegionChange}
+                          />
+                        }
+                        footerControl={
+                          activeQuickTryTracks.length > 5 ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllHits((prev) => !prev)}
+                              className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-3 text-[13px] font-medium text-white/80 transition-all duration-150 hover:from-[#232326] hover:to-[#17171A] hover:text-white active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                            >
+                              <span>{showAllHits ? 'Show less' : 'Show more'}</span>
+                              {showAllHits ? (
+                                <ChevronUp className="h-4 w-4 text-white/50" aria-hidden="true" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
+                              )}
+                            </button>
+                          ) : null
+                        }
+                        listKeyPrefix={popularRegion}
                         ariaLabel="Popular Hits"
-                        tracks={quickTryTracks}
+                        tracks={displayedQuickTryTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
                         showRanks={true}
                         isLoading={isQuickTryLoading}
-                        skeletonCount={8}
+                        skeletonCount={5}
                         onSelect={handleSelectTrack}
                       />
                     )}
