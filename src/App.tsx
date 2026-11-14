@@ -113,14 +113,15 @@ const TrackListSection = memo(function TrackListSection({
           </button>
         )}
       </div>
-      <div className="liquid-glass overflow-hidden rounded-[20px]">
+      <div className="space-y-2">
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
-          tracks.map((track) => (
+          tracks.map((track, index) => (
             <TrackRow
               key={track.id}
               track={track}
+              index={index}
               isSelected={selectedTrackId === track.id}
               onSelect={onSelect}
             />
@@ -971,11 +972,7 @@ function TrackCodeWorkspace() {
               <div className="px-4 pt-2 lg:px-0 lg:pt-0">
                 {trimmedQuery ? (
                   <>
-                    {isLoading && (
-                      <div className="liquid-glass overflow-hidden rounded-[20px]">
-                        <SkeletonRows count={6} />
-                      </div>
-                    )}
+                    {isLoading && <SkeletonRows count={6} />}
 
                     {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
                       <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
@@ -1062,13 +1059,7 @@ function TrackCodeWorkspace() {
                     )}
 
                     {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
-                      <Suspense
-                        fallback={
-                          <div className="liquid-glass overflow-hidden rounded-[20px]">
-                            <SkeletonRows count={3} />
-                          </div>
-                        }
-                      >
+                      <Suspense fallback={<SkeletonRows count={3} />}>
                         <EmptySearchView
                           query={trimmedQuery}
                           onClearSearch={handleClearInput}
@@ -1087,12 +1078,15 @@ function TrackCodeWorkspace() {
                             ↑↓ navigate · Enter copy
                           </span>
                         </div>
-                        <div className="liquid-glass overflow-hidden rounded-[20px]">
-                          {results.map((track) => (
+                        <div className="space-y-2">
+                          {results.map((track, index) => (
                             <TrackRow
                               key={track.id}
                               track={track}
-                              isSelected={isDesktop && activeDesktopTrack?.id === track.id}
+                              index={index}
+                              isSelected={
+                                (isDesktop ? activeDesktopTrack?.id : sheetTrack?.id) === track.id
+                              }
                               onSelect={handleSelectTrack}
                             />
                           ))}
@@ -1123,25 +1117,25 @@ function TrackCodeWorkspace() {
                       </section>
                     )}
 
-                    {/* Recent History Inset Grouped Liquid Glass Card */}
+                    {/* Recent History Liquid Glass Capsules */}
                     {recentTracks.length > 0 && (
                       <TrackListSection
                         title="Recent"
                         ariaLabel="Recent copied tracks"
                         tracks={recentTracks}
-                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : null}
+                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
                         onSelect={handleSelectTrack}
                         onClear={handleClearRecent}
                       />
                     )}
 
-                    {/* Popular Hits Inset Grouped Liquid Glass Card */}
+                    {/* Popular Hits Liquid Glass Capsules */}
                     {(isQuickTryLoading || quickTryTracks.length > 0) && (
                       <TrackListSection
                         title="POPULAR HITS"
                         ariaLabel="Popular Hits"
                         tracks={quickTryTracks}
-                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : null}
+                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
                         isLoading={isQuickTryLoading}
                         skeletonCount={5}
                         onSelect={handleSelectTrack}

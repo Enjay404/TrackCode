@@ -10,20 +10,24 @@ import { copyIsrcVerified } from '../utils/spotifyInput';
 
 interface TrackRowProps {
   track: TrackItem;
+  index?: number;
   isSelected?: boolean;
   onSelect: (track: TrackItem, copied: boolean) => void;
 }
 
 export const TrackRow = memo(function TrackRow({
   track,
+  index = 0,
   isSelected = false,
   onSelect,
 }: TrackRowProps) {
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
+  const [tapSweepCount, setTapSweepCount] = useState(0);
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
 
   const handleTap = async () => {
+    setTapSweepCount((prev) => prev + 1);
     let copied = false;
     if (track.isrc) {
       copied = await copyIsrcVerified(track.isrc);
@@ -34,19 +38,37 @@ export const TrackRow = memo(function TrackRow({
     onSelect(track, copied);
   };
 
+  const entranceDelayMs = Math.min(index, 12) * 45;
+
   return (
     <button
       type="button"
       data-track-id={track.id}
       aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
-      className={`group flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] last:border-b-0 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none ${
+      className={`group relative flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
         isSelected
-          ? 'lg:bg-white/[0.08] lg:ring-1 lg:ring-inset lg:ring-white/25'
-          : ''
+          ? 'border-white/[0.22] border-t-emerald-400/45 bg-[radial-gradient(120%_100%_at_10%_0%,rgba(48,209,88,0.14)_0%,rgba(255,255,255,0.06)_45%,rgba(255,255,255,0.02)_100%)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]'
+          : 'border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-white/[0.065] to-white/[0.02] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] hover:border-t-white/[0.28] active:border-t-white/[0.28]'
       }`}
     >
-      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
+      {/* Staggered entrance light sweep (index * 45ms) & full 600ms tap reflection */}
+      <span
+        key={tapSweepCount}
+        aria-hidden="true"
+        className={`trackcode-light-beam pointer-events-none absolute inset-0 ${
+          tapSweepCount === 0 ? 'animate-sweep-enter' : 'animate-sweep-tap'
+        }`}
+        style={tapSweepCount === 0 ? { animationDelay: `${entranceDelayMs}ms` } : undefined}
+      />
+
+      {/* Pointer hover light reflection (GPU translate3d only) */}
+      <span
+        aria-hidden="true"
+        className="trackcode-light-beam trackcode-sweep-hover pointer-events-none absolute inset-0"
+      />
+
+      <div className="relative z-10 h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
         {artSrc && !imgError ? (
           <img
             src={artSrc}
@@ -66,7 +88,7 @@ export const TrackRow = memo(function TrackRow({
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="relative z-10 min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-[15px] font-semibold leading-snug tracking-[-0.01em] text-white">
             {track.name}
@@ -102,8 +124,8 @@ export const TrackRow = memo(function TrackRow({
       </div>
 
       <ChevronRight
-        className={`h-4 w-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px] ${
-          isSelected ? 'text-[#48484A] lg:text-[#30D158]' : 'text-[#48484A]'
+        className={`relative z-10 h-4 w-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px] ${
+          isSelected ? 'text-[#30D158]' : 'text-[#48484A]'
         }`}
       />
     </button>

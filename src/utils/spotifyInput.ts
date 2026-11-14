@@ -3,7 +3,7 @@ import type { CachedSearchResult, TrackItem } from '../types/track';
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
 const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v2';
-const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v1';
+const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v2';
 const MAX_RECENT_TRACKS = 8;
 const MAX_SEARCH_CACHE_ENTRIES = 40;
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
