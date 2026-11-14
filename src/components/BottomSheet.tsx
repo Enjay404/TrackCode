@@ -8,28 +8,23 @@ import {
   EXPLICIT_BADGE_STYLE,
 } from '../utils/badgeStyles';
 import { extractDominantColorRgb } from '../utils/dominantColor';
+import { IOS_EASE, SPRING_BUTTON } from '../utils/motionConfig';
 import {
+  copyIsrcVerified,
   formatIsrcCode,
   loadGuideExpandedPreference,
   saveGuideExpandedPreference,
-  syncCopyIsrc,
 } from '../utils/spotifyInput';
 
 interface BottomSheetProps {
   track: TrackItem | null;
   autoCopiedSignal: number;
   onClose: () => void;
-  onCopied: (isrc: string) => void;
+  onCopied: (isrc: string, copiedTrack?: TrackItem) => void;
+  onCopyFailed?: () => void;
   onSearchOtherVersions: (track: TrackItem) => void;
 }
 
-const SPRING_BUTTON = {
-  type: 'spring' as const,
-  stiffness: 500,
-  damping: 30,
-};
-
-const IOS_EASE = [0.22, 1, 0.36, 1] as const;
 const SHEET_DURATION_MS = 250;
 const AUTO_COPY_RESET_MS = 750;
 const MANUAL_COPY_RESET_MS = 1000;
@@ -39,19 +34,14 @@ export const BottomSheet = memo(function BottomSheet({
   autoCopiedSignal,
   onClose,
   onCopied,
+  onCopyFailed,
   onSearchOtherVersions,
 }: BottomSheetProps) {
   const [lastTrack, setLastTrack] = useState<TrackItem | null>(track);
-  if (track && track !== lastTrack) {
-    setLastTrack(track);
-  }
-
   const isOpen = track !== null;
   const activeTrack = track ?? lastTrack;
   const artSrc = activeTrack?.albumArt.medium || activeTrack?.albumArt.large || null;
 
-  const [isRendered, setIsRendered] = useState<boolean>(isOpen);
-  const [isVisible, setIsVisible] = useState<boolean>(isOpen);
   const [glowRgb, setGlowRgb] = useState<string>('110, 110, 128');
   const [glowReady, setGlowReady] = useState(false);
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
@@ -61,6 +51,7 @@ export const BottomSheet = memo(function BottomSheet({
 
   const copyTimerRef = useRef<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const triggerElementRef = useRef<HTMLElement | null>(null);
   const dragStateRef = useRef<{
     active: boolean;
     pointerId: number | null;
@@ -78,30 +69,33 @@ export const BottomSheet = memo(function BottomSheet({
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
 
   useEffect(() => {
-    if (isOpen) {
-      setIsRendered(true);
-      let raf2 = 0;
-      const raf1 = window.requestAnimationFrame(() => {
-        raf2 = window.requestAnimationFrame(() => {
-          setIsVisible(true);
-        });
-      });
-      return () => {
-        window.cancelAnimationFrame(raf1);
-        window.cancelAnimationFrame(raf2);
-      };
+    if (track) {
+      setLastTrack(track);
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (activeEl && activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA') {
+        triggerElementRef.current = activeEl;
+      } else {
+        triggerElementRef.current = null;
+      }
+      return;
     }
 
-    setIsVisible(false);
-    const hideTimer = window.setTimeout(() => {
-      setIsRendered(false);
+    const resetGlowTimer = window.setTimeout(() => {
       setGlowReady(false);
     }, SHEET_DURATION_MS + 20);
 
+    const prevTrigger = triggerElementRef.current;
+    triggerElementRef.current = null;
+    if (prevTrigger && typeof prevTrigger.focus === 'function' && document.contains(prevTrigger)) {
+      window.setTimeout(() => {
+        prevTrigger.focus({ preventScroll: true });
+      }, SHEET_DURATION_MS);
+    }
+
     return () => {
-      window.clearTimeout(hideTimer);
+      window.clearTimeout(resetGlowTimer);
     };
-  }, [isOpen]);
+  }, [track]);
 
   useEffect(() => {
     return () => {
@@ -177,9 +171,9 @@ export const BottomSheet = memo(function BottomSheet({
     };
   }, [isOpen, onClose]);
 
-  const handleManualCopy = () => {
+  const handleManualCopy = async () => {
     if (!activeTrack?.isrc) return;
-    const ok = syncCopyIsrc(activeTrack.isrc);
+    const ok = await copyIsrcVerified(activeTrack.isrc);
     if (ok) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(10);
@@ -189,11 +183,13 @@ export const BottomSheet = memo(function BottomSheet({
       }
       setCopiedState(true);
       setPulseCount((c) => c + 1);
-      onCopied(activeTrack.isrc);
+      onCopied(activeTrack.isrc, activeTrack);
       copyTimerRef.current = window.setTimeout(() => {
         copyTimerRef.current = null;
         setCopiedState(false);
       }, MANUAL_COPY_RESET_MS);
+    } else {
+      onCopyFailed?.();
     }
   };
 
@@ -260,30 +256,32 @@ export const BottomSheet = memo(function BottomSheet({
   };
 
   const formattedIsrc = activeTrack?.isrc ? formatIsrcCode(activeTrack.isrc) : null;
+  const visibilityTransition = isOpen ? '0ms linear 0ms' : `0ms linear ${SHEET_DURATION_MS}ms`;
 
   return (
     <div
-      className="fixed inset-0 z-40 items-end justify-center"
+      className="fixed inset-0 z-40 flex items-end justify-center"
       role="dialog"
       aria-modal={isOpen}
       aria-hidden={!isOpen}
       aria-label={activeTrack?.name || 'Track details'}
       style={{
-        display: isRendered ? 'flex' : 'none',
-        pointerEvents: isVisible ? 'auto' : 'none',
+        visibility: isOpen ? 'visible' : 'hidden',
+        pointerEvents: isOpen ? 'auto' : 'none',
+        transition: `visibility ${visibilityTransition}`,
       }}
     >
       {/* Translucent modal backdrop (zero backdrop-filter) */}
       <div
         onClick={isOpen ? onClose : undefined}
-        className="fixed inset-0 bg-black/70"
+        className="fixed inset-0 bg-black/72"
         style={{
-          opacity: isVisible ? 1 : 0,
+          opacity: isOpen ? 1 : 0,
           transition: `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
         }}
       />
 
-      {/* Lean GPU-composited bottom sheet */}
+      {/* Warm GPU-composited bottom sheet */}
       <div
         ref={sheetRef}
         onPointerDown={handlePointerDown}
@@ -291,8 +289,9 @@ export const BottomSheet = memo(function BottomSheet({
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
         style={{
-          transform: isVisible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
-          opacity: isVisible ? 1 : 0,
+          transform: isOpen ? 'translate3d(0, 0, 0)' : 'translate3d(0, 105%, 0)',
+          opacity: isOpen ? 1 : 0,
+          backfaceVisibility: 'hidden',
           paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
           background:
             'linear-gradient(180deg, rgba(34, 34, 38, 0.98) 0%, rgba(24, 24, 28, 0.96) 100%)',
@@ -420,7 +419,7 @@ export const BottomSheet = memo(function BottomSheet({
             <motion.button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={handleManualCopy}
+              onClick={() => void handleManualCopy()}
               whileTap={{ scale: 0.985 }}
               transition={SPRING_BUTTON}
               tabIndex={isOpen ? 0 : -1}
@@ -448,7 +447,7 @@ export const BottomSheet = memo(function BottomSheet({
                 <div className="text-[11px] font-medium tracking-wide text-[#8E8E93]">
                   Instagram Search Code
                 </div>
-                <div className="font-mono-isrc mt-0.5 truncate text-[17px] font-semibold tracking-[0.02em] text-white">
+                <div className="font-mono-isrc mt-0.5 select-all truncate text-[17px] font-semibold tracking-[0.02em] text-white">
                   {formattedIsrc}
                 </div>
               </div>
@@ -464,7 +463,7 @@ export const BottomSheet = memo(function BottomSheet({
             <motion.button
               type="button"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={handleManualCopy}
+              onClick={() => void handleManualCopy()}
               whileTap={{ scale: 0.97 }}
               transition={SPRING_BUTTON}
               tabIndex={isOpen ? 0 : -1}
@@ -543,86 +542,71 @@ export const BottomSheet = memo(function BottomSheet({
           </div>
         )}
 
-        {/* Collapsible "How to use on Instagram" card */}
+        {/* Collapsible "How to use on Instagram" card (zero layout-thrashing grid transitions) */}
         <div className="mt-4 rounded-[16px] border border-white/10 bg-[#2C2C2E]/65">
-          <motion.button
+          <button
             type="button"
             onClick={handleToggleGuide}
-            whileTap={{ scale: 0.97 }}
-            transition={SPRING_BUTTON}
             tabIndex={isOpen ? 0 : -1}
             aria-expanded={guideOpen}
-            className="flex min-h-[46px] w-full items-center justify-between rounded-[16px] px-4 py-2.5 text-left active:bg-[#2C2C2E]"
+            className="flex min-h-[46px] w-full cursor-pointer items-center justify-between rounded-[16px] px-4 py-2.5 text-left transition-transform duration-150 active:scale-[0.985] active:bg-[#2C2C2E]"
           >
             <span className="text-[14px] font-semibold text-white">
               How to use on Instagram
             </span>
-            <motion.span
-              animate={{ rotate: guideOpen ? 180 : 0 }}
-              transition={{ duration: 0.22, ease: IOS_EASE }}
-              className="text-[#8E8E93]"
-            >
-              <ChevronDown className="h-4 w-4" />
-            </motion.span>
-          </motion.button>
+            <ChevronDown
+              className={`h-4 w-4 text-[#8E8E93] transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                guideOpen ? 'rotate-180' : 'rotate-0'
+              }`}
+            />
+          </button>
 
-          <div
-            aria-hidden={!guideOpen}
-            className={`grid transition-[grid-template-rows] duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              guideOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
-            }`}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div
-                className={`transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                  guideOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
-                }`}
-              >
-                <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
-                  <li className="flex gap-2.5">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
-                      1
-                    </span>
-                    <span>
-                      Open Instagram and tap the <strong className="font-semibold text-white">Music</strong> sticker on a Story, Reel, or Note.
-                    </span>
-                  </li>
-                  <li className="flex gap-2.5">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
-                      2
-                    </span>
-                    <span>
-                      Paste <span className="font-mono-isrc text-white">{formattedIsrc || 'ISRC:XXXXXXXXXXXX'}</span> directly into the search bar.
-                    </span>
-                  </li>
-                  <li className="flex gap-2.5">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
-                      3
-                    </span>
-                    <span>Tap the hidden track when it pops up.</span>
-                  </li>
-                </ol>
-              </div>
+          {guideOpen && (
+            <div className="animate-card-in">
+              <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
+                <li className="flex gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
+                    1
+                  </span>
+                  <span>
+                    Open Instagram and tap the <strong className="font-semibold text-white">Music</strong> sticker on a Story, Reel, or Note.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
+                    2
+                  </span>
+                  <span>
+                    Paste <span className="font-mono-isrc text-white">{formattedIsrc || 'ISRC:XXXXXXXXXXXX'}</span> directly into the search bar.
+                  </span>
+                </li>
+                <li className="flex gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
+                    3
+                  </span>
+                  <span>Tap the hidden track when it pops up.</span>
+                </li>
+              </ol>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Matching Creator Footer inside Bottom Sheet */}
         <div className="mt-4 flex justify-center">
-          <motion.a
+          <a
             href="https://instagram.com/enjay404"
             target="_blank"
             rel="noopener noreferrer"
-            whileTap={{ scale: 0.96 }}
-            transition={SPRING_BUTTON}
             tabIndex={isOpen ? 0 : -1}
-            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-white/10 bg-[#2C2C2E]/65 px-3.5 py-1.5 text-[12px] text-[#AEAEB2] transition-colors hover:bg-[#2C2C2E] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-white/10 bg-[#2C2C2E]/65 px-3.5 py-1.5 text-[12px] text-[#AEAEB2] transition-[transform,color,background-color] duration-150 hover:bg-[#2C2C2E] hover:text-white active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           >
             <span>Made with ❤️ by</span>
             <span className="font-medium text-white">@enjay404</span>
-          </motion.a>
+          </a>
         </div>
       </div>
     </div>
   );
 });
+
+export default BottomSheet;

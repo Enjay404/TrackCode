@@ -38,3 +38,11 @@ export interface TrackApiResponse {
   spotifyHealthy?: boolean;
   deezerHealthy?: boolean;
 }
+
+export interface CachedSearchResult {
+  tracks: TrackItem[];
+  source?: 'spotify' | 'deezer';
+  spotifyHealthy?: boolean;
+  deezerHealthy?: boolean;
+  cachedAt: number;
+}

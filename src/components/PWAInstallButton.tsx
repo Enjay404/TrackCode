@@ -2,12 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Download, Share, X } from 'lucide-react';
 import { useState } from 'react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-
-const SPRING_BUTTON = {
-  type: 'spring' as const,
-  stiffness: 500,
-  damping: 30,
-};
+import { SPRING_BUTTON } from '../utils/motionConfig';
 
 export function PWAInstallButton() {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();

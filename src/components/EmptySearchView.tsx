@@ -1,18 +1,13 @@
 import { motion } from 'motion/react';
 import { ClipboardPaste, RotateCcw } from 'lucide-react';
 import { memo } from 'react';
+import { SPRING_BUTTON } from '../utils/motionConfig';
 
 interface EmptySearchViewProps {
   query: string;
   onClearSearch: () => void;
   onPasteLink: () => void;
 }
-
-const SPRING_BUTTON = {
-  type: 'spring' as const,
-  stiffness: 500,
-  damping: 30,
-};
 
 export const EmptySearchView = memo(function EmptySearchView({
   query,
@@ -180,3 +175,5 @@ export const EmptySearchView = memo(function EmptySearchView({
     </motion.div>
   );
 });
+
+export default EmptySearchView;

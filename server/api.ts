@@ -296,6 +296,15 @@ function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
   };
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
 async function extractTitleFromSpotifyOembed(rawQuery: string): Promise<string | null> {
   let targetUrl = rawQuery.trim();
   const trackId = extractTrackIdFromText(targetUrl);
@@ -309,25 +318,58 @@ async function extractTitleFromSpotifyOembed(rawQuery: string): Promise<string |
     return null;
   }
 
-  try {
-    const oembedRes = await fetch(
-      `https://open.spotify.com/oembed?url=${encodeURIComponent(targetUrl)}`,
-      { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) }
+  const [oembedResult, pageResult] = await Promise.allSettled([
+    fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(targetUrl)}`, {
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    }).then(async (res) => (res.ok ? ((await res.json()) as { title?: string }) : null)),
+    fetch(targetUrl, {
+      signal: AbortSignal.timeout(3500),
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (compatible; TrackCodeBot/1.0; +https://trackcode.vercel.app)',
+      },
+    }).then(async (res) => (res.ok ? await res.text() : '')),
+  ]);
+
+  const oembedTitle =
+    oembedResult.status === 'fulfilled' ? oembedResult.value?.title?.trim() || null : null;
+
+  if (pageResult.status === 'fulfilled' && pageResult.value) {
+    const html = pageResult.value;
+    const ogDescMatch = html.match(
+      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i
     );
-    if (!oembedRes.ok) return null;
-    const oembedData = (await oembedRes.json()) as { title?: string };
-    return oembedData.title?.trim() || null;
-  } catch {
-    return null;
+    if (ogDescMatch?.[1]) {
+      const desc = decodeHtmlEntities(ogDescMatch[1]);
+      // Typical format: "Listen to Blinding Lights on Spotify. Song · The Weeknd · 2020"
+      const parts = desc.split('·').map((s) => s.trim());
+      if (parts.length >= 2 && parts[1]) {
+        const artist = parts[1];
+        if (oembedTitle) {
+          return `${oembedTitle} ${artist}`;
+        }
+      }
+    }
+
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    if (titleMatch?.[1]) {
+      const rawPageTitle = decodeHtmlEntities(titleMatch[1]);
+      const byMatch = rawPageTitle.match(/^(.+?)\s*-\s*song(?:\s+and\s+lyrics)?\s+by\s+(.+?)\s*\|\s*Spotify$/i);
+      if (byMatch?.[1] && byMatch?.[2]) {
+        return `${byMatch[1].trim()} ${byMatch[2].trim()}`;
+      }
+    }
   }
+
+  return oembedTitle;
 }
 
 async function searchDeezerTracks(rawQuery: string, limit = 6): Promise<TrackItem[]> {
   let effectiveQuery = rawQuery.trim();
   if (/spotify\.com\/|spotify:|^[A-Za-z0-9]{22}$/i.test(effectiveQuery)) {
-    const oembedTitle = await extractTitleFromSpotifyOembed(effectiveQuery);
-    if (oembedTitle) {
-      effectiveQuery = oembedTitle;
+    const oembedQuery = await extractTitleFromSpotifyOembed(effectiveQuery);
+    if (oembedQuery) {
+      effectiveQuery = oembedQuery;
     }
   }
 
@@ -532,7 +574,17 @@ app.disable('x-powered-by');
 app.use(express.json());
 
 const searchCache = new BoundedTtlCache<TrackItem[]>(250, 15 * 60 * 1000);
+const deezerSearchCache = new BoundedTtlCache<TrackItem[]>(150, 5 * 60 * 1000);
 const trackCache = new BoundedTtlCache<TrackItem>(300, 60 * 60 * 1000);
+
+interface SearchExecutionResult {
+  status: number;
+  cacheControl?: string;
+  retryAfter?: number;
+  body: Record<string, unknown>;
+}
+
+const inflightSearchPromises = new Map<string, Promise<SearchExecutionResult>>();
 
 function shouldFallbackToDeezer(error: unknown): boolean {
   if (error instanceof SpotifyRateLimitError) return true;
@@ -642,13 +694,152 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, configured });
 });
 
-function handlePopularHits(_req: Request, res: Response) {
+app.get('/api/quick-try', (_req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
   res.json({ tracks: POPULAR_HITS_TRACKS });
-}
+});
 
-app.get('/api/quick-try', handlePopularHits);
-app.get('/api/popular', handlePopularHits);
+async function executeSearchQuery(
+  query: string,
+  normalizedQuery: string,
+  directTrackId: string | null,
+  cacheControlHeader: string
+): Promise<SearchExecutionResult> {
+  try {
+    if (directTrackId) {
+      const cachedTrack = trackCache.get(directTrackId);
+      if (cachedTrack) {
+        const tracks = [cachedTrack];
+        searchCache.set(normalizedQuery, tracks);
+        return {
+          status: 200,
+          cacheControl: cacheControlHeader,
+          body: {
+            tracks,
+            query: normalizedQuery,
+            source: 'spotify',
+            spotifyHealthy: Date.now() >= spotifyRateLimitedUntil,
+            deezerHealthy: true,
+          },
+        };
+      }
+
+      const rawTrack = await spotifyGet<SpotifyRawTrack>(
+        `https://api.spotify.com/v1/tracks/${directTrackId}`
+      );
+      const track = normalizeTrack(rawTrack);
+      trackCache.set(directTrackId, track);
+      const tracks = [track];
+      searchCache.set(normalizedQuery, tracks);
+      return {
+        status: 200,
+        cacheControl: cacheControlHeader,
+        body: {
+          tracks,
+          query: normalizedQuery,
+          source: 'spotify',
+          spotifyHealthy: true,
+          deezerHealthy: true,
+        },
+      };
+    }
+
+    const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(normalizedQuery)}&type=track&limit=10`;
+    const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(searchUrl);
+
+    const items = data.tracks?.items ?? [];
+    const tracks = items.filter((item) => item && item.id).map(normalizeTrack);
+    searchCache.set(normalizedQuery, tracks);
+
+    return {
+      status: 200,
+      cacheControl: cacheControlHeader,
+      body: {
+        tracks,
+        query: normalizedQuery,
+        source: 'spotify',
+        spotifyHealthy: true,
+        deezerHealthy: true,
+      },
+    };
+  } catch (error) {
+    if (shouldFallbackToDeezer(error)) {
+      const cachedDeezer = deezerSearchCache.get(normalizedQuery);
+      if (cachedDeezer) {
+        return {
+          status: 200,
+          cacheControl: 'public, s-maxage=300, stale-while-revalidate=3600',
+          body: {
+            tracks: cachedDeezer,
+            query: normalizedQuery,
+            source: 'deezer',
+            spotifyHealthy: false,
+            deezerHealthy: true,
+          },
+        };
+      }
+
+      try {
+        const deezerTracks = await searchDeezerTracks(query, 6);
+        if (deezerTracks.length > 0) {
+          deezerSearchCache.set(normalizedQuery, deezerTracks);
+        }
+        return {
+          status: 200,
+          cacheControl: 'public, s-maxage=300, stale-while-revalidate=3600',
+          body: {
+            tracks: deezerTracks,
+            query: normalizedQuery,
+            source: 'deezer',
+            spotifyHealthy: false,
+            deezerHealthy: true,
+          },
+        };
+      } catch (deezerError) {
+        const dzMsg = deezerError instanceof Error ? deezerError.message : 'Unknown Deezer error';
+        console.error('Deezer fallback search error:', dzMsg);
+        if (error instanceof SpotifyRateLimitError) {
+          return {
+            status: 429,
+            retryAfter: error.retryAfterSeconds,
+            body: {
+              error: 'Too many searches right now. Please wait a few seconds and try again.',
+              code: 'RATE_LIMITED',
+              retryAfter: error.retryAfterSeconds,
+              tracks: [],
+              source: 'spotify',
+              spotifyHealthy: false,
+              deezerHealthy: false,
+            },
+          };
+        }
+        return {
+          status: 502,
+          body: {
+            error: 'Unable to search right now. Please try again.',
+            tracks: [],
+            source: 'spotify',
+            spotifyHealthy: false,
+            deezerHealthy: false,
+          },
+        };
+      }
+    }
+
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Spotify search error:', message);
+    return {
+      status: 502,
+      body: {
+        error: 'Unable to search Spotify right now. Please try again.',
+        tracks: [],
+        source: 'spotify',
+        spotifyHealthy: false,
+        deezerHealthy: true,
+      },
+    };
+  }
+}
 
 app.get('/api/search', async (req: Request, res: Response) => {
   const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim() : '';
@@ -677,106 +868,24 @@ app.get('/api/search', async (req: Request, res: Response) => {
     return;
   }
 
-  try {
-    if (directTrackId) {
-      const cachedTrack = trackCache.get(directTrackId);
-      if (cachedTrack) {
-        const tracks = [cachedTrack];
-        searchCache.set(normalizedQuery, tracks);
-        res.setHeader('Cache-Control', cacheControlHeader);
-        res.json({
-          tracks,
-          query: normalizedQuery,
-          source: 'spotify',
-          spotifyHealthy: Date.now() >= spotifyRateLimitedUntil,
-          deezerHealthy: true,
-        });
-        return;
+  let inflight = inflightSearchPromises.get(normalizedQuery);
+  if (!inflight) {
+    inflight = executeSearchQuery(query, normalizedQuery, directTrackId, cacheControlHeader).finally(
+      () => {
+        inflightSearchPromises.delete(normalizedQuery);
       }
-
-      const rawTrack = await spotifyGet<SpotifyRawTrack>(
-        `https://api.spotify.com/v1/tracks/${directTrackId}`
-      );
-      const track = normalizeTrack(rawTrack);
-      trackCache.set(directTrackId, track);
-      const tracks = [track];
-      searchCache.set(normalizedQuery, tracks);
-      res.setHeader('Cache-Control', cacheControlHeader);
-      res.json({
-        tracks,
-        query: normalizedQuery,
-        source: 'spotify',
-        spotifyHealthy: true,
-        deezerHealthy: true,
-      });
-      return;
-    }
-
-    const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(normalizedQuery)}&type=track&limit=10`;
-    const data = await spotifyGet<{ tracks?: { items?: SpotifyRawTrack[] } }>(searchUrl);
-
-    const items = data.tracks?.items ?? [];
-    const tracks = items.filter((item) => item && item.id).map(normalizeTrack);
-    searchCache.set(normalizedQuery, tracks);
-
-    res.setHeader('Cache-Control', cacheControlHeader);
-    res.json({
-      tracks,
-      query: normalizedQuery,
-      source: 'spotify',
-      spotifyHealthy: true,
-      deezerHealthy: true,
-    });
-  } catch (error) {
-    if (shouldFallbackToDeezer(error)) {
-      try {
-        const deezerTracks = await searchDeezerTracks(query, 6);
-        res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
-        res.json({
-          tracks: deezerTracks,
-          query: normalizedQuery,
-          source: 'deezer',
-          spotifyHealthy: false,
-          deezerHealthy: true,
-        });
-        return;
-      } catch (deezerError) {
-        const dzMsg = deezerError instanceof Error ? deezerError.message : 'Unknown Deezer error';
-        console.error('Deezer fallback search error:', dzMsg);
-        if (error instanceof SpotifyRateLimitError) {
-          res.setHeader('Retry-After', String(error.retryAfterSeconds));
-          res.status(429).json({
-            error: 'Too many searches right now. Please wait a few seconds and try again.',
-            code: 'RATE_LIMITED',
-            retryAfter: error.retryAfterSeconds,
-            tracks: [],
-            source: 'spotify',
-            spotifyHealthy: false,
-            deezerHealthy: false,
-          });
-          return;
-        }
-        res.status(502).json({
-          error: 'Unable to search right now. Please try again.',
-          tracks: [],
-          source: 'spotify',
-          spotifyHealthy: false,
-          deezerHealthy: false,
-        });
-        return;
-      }
-    }
-
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Spotify search error:', message);
-    res.status(502).json({
-      error: 'Unable to search Spotify right now. Please try again.',
-      tracks: [],
-      source: 'spotify',
-      spotifyHealthy: false,
-      deezerHealthy: true,
-    });
+    );
+    inflightSearchPromises.set(normalizedQuery, inflight);
   }
+
+  const outcome = await inflight;
+  if (outcome.cacheControl) {
+    res.setHeader('Cache-Control', outcome.cacheControl);
+  }
+  if (outcome.retryAfter !== undefined) {
+    res.setHeader('Retry-After', String(outcome.retryAfter));
+  }
+  res.status(outcome.status).json(outcome.body);
 });
 
 app.get('/api/track', async (req: Request, res: Response) => {

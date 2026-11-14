@@ -1,11 +1,4 @@
-import { motion } from 'motion/react';
 import { memo } from 'react';
-
-const SPRING_BUTTON = {
-  type: 'spring' as const,
-  stiffness: 500,
-  damping: 30,
-};
 
 export const FooterDock = memo(function FooterDock() {
   return (
@@ -18,39 +11,21 @@ export const FooterDock = memo(function FooterDock() {
       }}
     >
       <div className="flex max-w-full items-center justify-center gap-2">
-        <motion.a
+        <a
           href="https://instagram.com/enjay404"
           target="_blank"
           rel="noopener noreferrer"
-          whileTap={{ scale: 0.96 }}
-          transition={SPRING_BUTTON}
-          className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(36, 36, 40, 0.94) 0%, rgba(24, 24, 28, 0.96) 100%)',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.18), 0 8px 24px rgba(0, 0, 0, 0.6)',
-          }}
+          className="liquid-glass-pill pointer-events-auto inline-flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-[transform,color] duration-150 hover:text-white active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
         >
           <span>Made with ❤️ by</span>
           <span className="font-medium text-white">@enjay404</span>
-        </motion.a>
+        </a>
 
-        <motion.a
+        <a
           href="https://ko-fi.com/enjay404"
           target="_blank"
           rel="noopener noreferrer"
-          whileTap={{ scale: 0.96 }}
-          transition={SPRING_BUTTON}
-          className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(36, 36, 40, 0.94) 0%, rgba(24, 24, 28, 0.96) 100%)',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            boxShadow:
-              'inset 0 1px 0.5px rgba(255, 255, 255, 0.18), 0 8px 24px rgba(0, 0, 0, 0.6)',
-          }}
+          className="liquid-glass-pill group pointer-events-auto inline-flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-[transform,color] duration-150 hover:text-white active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
         >
           <span
             aria-hidden="true"
@@ -59,7 +34,7 @@ export const FooterDock = memo(function FooterDock() {
             ☕
           </span>
           <span>Support</span>
-        </motion.a>
+        </a>
       </div>
     </footer>
   );

@@ -1,4 +1,3 @@
-import { motion } from 'motion/react';
 import { ChevronRight, Disc3 } from 'lucide-react';
 import { memo, useState } from 'react';
 import type { TrackItem } from '../types/track';
@@ -7,60 +6,46 @@ import {
   ALBUM_TYPE_LABEL,
   EXPLICIT_BADGE_STYLE,
 } from '../utils/badgeStyles';
-import { syncCopyIsrc } from '../utils/spotifyInput';
+import { copyIsrcVerified } from '../utils/spotifyInput';
 
 interface TrackRowProps {
   track: TrackItem;
-  index: number;
-  onSelect: (track: TrackItem, copiedSync: boolean) => void;
+  onSelect: (track: TrackItem, copied: boolean) => void;
 }
 
-export const TrackRow = memo(function TrackRow({ track, index, onSelect }: TrackRowProps) {
-  const [imgError, setImgError] = useState(false);
+export const TrackRow = memo(function TrackRow({ track, onSelect }: TrackRowProps) {
+  const artSrc = track.albumArt.medium || track.albumArt.large || null;
+  const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
+  const imgError = Boolean(artSrc && failedArtSrc === artSrc);
 
-  const handleTap = () => {
-    // Synchronous clipboard write MUST execute before any async work or state updates
-    let copiedSync = false;
+  const handleTap = async () => {
+    let copied = false;
     if (track.isrc) {
-      copiedSync = syncCopyIsrc(track.isrc);
-      if (copiedSync && typeof navigator !== 'undefined' && navigator.vibrate) {
+      copied = await copyIsrcVerified(track.isrc);
+      if (copied && typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(10);
       }
     }
-    onSelect(track, copiedSync);
+    onSelect(track, copied);
   };
 
   return (
-    <motion.button
+    <button
       type="button"
-      onClick={handleTap}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{
-        opacity: 1,
-        y: 0,
-        transition: {
-          duration: 0.22,
-          delay: Math.min(index, 10) * 0.02,
-          ease: [0.32, 0.72, 0, 1],
-        },
-      }}
-      whileTap={{
-        scale: 0.97,
-        transition: { type: 'spring', stiffness: 500, damping: 30, delay: 0 },
-      }}
-      className="group flex min-h-[70px] w-full items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-colors duration-100 last:border-b-0 hover:bg-white/[0.04] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none"
+      onClick={() => void handleTap()}
+      className="group flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] last:border-b-0 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none"
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
-        {(track.albumArt.medium || track.albumArt.large) && !imgError ? (
+        {artSrc && !imgError ? (
           <img
-            src={track.albumArt.medium || track.albumArt.large || ''}
+            src={artSrc}
             alt={`${track.albumName || track.name} cover`}
             width={48}
             height={48}
             referrerPolicy="no-referrer"
             loading="lazy"
             decoding="async"
-            onError={() => setImgError(true)}
+            onError={() => setFailedArtSrc(artSrc)}
             className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.04] group-active:scale-[1.04]"
           />
         ) : (
@@ -106,6 +91,6 @@ export const TrackRow = memo(function TrackRow({ track, index, onSelect }: Track
       </div>
 
       <ChevronRight className="h-4 w-4 shrink-0 text-[#48484A] transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px]" />
-    </motion.button>
+    </button>
   );
 });

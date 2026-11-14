@@ -1,6 +1,15 @@
 const colorCache = new Map<string, string>();
+const corsBlockedHosts = new Set<string>();
 const MAX_COLOR_CACHE = 100;
 const DEFAULT_GLOW_RGB = '110, 110, 128';
+
+function getHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
 
 function setColorCache(url: string, rgb: string) {
   if (colorCache.size >= MAX_COLOR_CACHE) {
@@ -18,6 +27,11 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
   const cached = colorCache.get(imageUrl);
   if (cached) return cached;
 
+  const hostname = getHostname(imageUrl);
+  if (hostname && corsBlockedHosts.has(hostname)) {
+    return DEFAULT_GLOW_RGB;
+  }
+
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -25,7 +39,7 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
 
     const timer = window.setTimeout(() => {
       resolve(DEFAULT_GLOW_RGB);
-    }, 1500);
+    }, 900);
 
     img.onload = () => {
       window.clearTimeout(timer);
@@ -60,7 +74,6 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
           const saturation = max === 0 ? 0 : (max - min) / max;
           const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
-          // Favor vibrant mid-tone pixels over near-black or near-white background pixels
           if (luminance < 0.08 || luminance > 0.94) continue;
           const weight = 0.5 + saturation * 2.5;
 
@@ -84,12 +97,14 @@ export async function extractDominantColorRgb(imageUrl: string | null): Promise<
         setColorCache(imageUrl, rgb);
         resolve(rgb);
       } catch {
+        if (hostname) corsBlockedHosts.add(hostname);
         resolve(DEFAULT_GLOW_RGB);
       }
     };
 
     img.onerror = () => {
       window.clearTimeout(timer);
+      if (hostname) corsBlockedHosts.add(hostname);
       resolve(DEFAULT_GLOW_RGB);
     };
 

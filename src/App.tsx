@@ -10,14 +10,20 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { BottomSheet } from './components/BottomSheet';
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
-import { EmptySearchView } from './components/EmptySearchView';
 import { FooterDock } from './components/FooterDock';
-import { MaintenancePage } from './components/MaintenancePage';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { SkeletonRows } from './components/SkeletonRows';
+import { SriLankaFlag } from './components/SriLankaFlag';
 import { TrackRow } from './components/TrackRow';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import type {
@@ -27,24 +33,23 @@ import type {
   TrackApiResponse,
   TrackItem,
 } from './types/track';
+import { SPRING_BUTTON } from './utils/motionConfig';
 import {
   clearRecentTracksStorage,
+  copyIsrcVerified,
   formatIsrcCode,
-  getCachedSearchResults,
+  getCachedSearchResult,
   isSpotifyTrackLink,
+  loadCachedQuickTryTracks,
   loadRecentTracks,
+  saveCachedQuickTryTracks,
   saveRecentTrack,
-  setCachedSearchResults,
-  syncCopyIsrc,
+  setCachedSearchResult,
 } from './utils/spotifyInput';
 
-const SPRING_BUTTON = {
-  type: 'spring' as const,
-  stiffness: 500,
-  damping: 30,
-};
-
-const IOS_CUBIC = [0.22, 1, 0.36, 1] as const;
+const BottomSheet = lazy(() => import('./components/BottomSheet'));
+const EmptySearchView = lazy(() => import('./components/EmptySearchView'));
+const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
 
 const FORCE_MAINTENANCE = false;
 
@@ -59,7 +64,7 @@ interface TrackListSectionProps {
   tracks: TrackItem[];
   isLoading?: boolean;
   skeletonCount?: number;
-  onSelect: (track: TrackItem, copiedSync: boolean) => void;
+  onSelect: (track: TrackItem, copied: boolean) => void;
   onClear?: () => void;
 }
 
@@ -79,28 +84,21 @@ const TrackListSection = memo(function TrackListSection({
           {title}
         </h2>
         {onClear && (
-          <motion.button
+          <button
             type="button"
             onClick={onClear}
-            whileTap={{ scale: 0.97 }}
-            transition={SPRING_BUTTON}
-            className="flex min-h-[36px] items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] active:bg-white/10"
+            className="flex min-h-[36px] cursor-pointer items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] transition-transform duration-150 active:scale-[0.97] active:bg-white/10"
           >
             Clear
-          </motion.button>
+          </button>
         )}
       </div>
       <div className="liquid-glass overflow-hidden rounded-[20px]">
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
-          tracks.map((track, index) => (
-            <TrackRow
-              key={track.id}
-              track={track}
-              index={index}
-              onSelect={onSelect}
-            />
+          tracks.map((track) => (
+            <TrackRow key={track.id} track={track} onSelect={onSelect} />
           ))
         )}
       </div>
@@ -170,6 +168,26 @@ const ApiStatusPill = memo(function ApiStatusPill({ status }: { status: ApiStatu
   );
 });
 
+function deriveApiStatus(meta: {
+  source?: 'spotify' | 'deezer';
+  spotifyHealthy?: boolean;
+  deezerHealthy?: boolean;
+}): ApiStatusState | null {
+  if (
+    typeof meta.spotifyHealthy !== 'boolean' &&
+    typeof meta.deezerHealthy !== 'boolean' &&
+    !meta.source
+  ) {
+    return null;
+  }
+  const deezerDown = meta.deezerHealthy === false;
+  const spotifyOnline = meta.spotifyHealthy === true;
+  return {
+    spotify: spotifyOnline ? 'online' : deezerDown ? 'down' : 'limited',
+    deezer: deezerDown ? 'down' : 'online',
+  };
+}
+
 function TrackCodeWorkspace() {
   const [query, setQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -180,8 +198,12 @@ function TrackCodeWorkspace() {
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const [quickTryTracks, setQuickTryTracks] = useState<TrackItem[]>([]);
-  const [isQuickTryLoading, setIsQuickTryLoading] = useState(true);
+  const [quickTryTracks, setQuickTryTracks] = useState<TrackItem[]>(() =>
+    loadCachedQuickTryTracks()
+  );
+  const [isQuickTryLoading, setIsQuickTryLoading] = useState(() =>
+    loadCachedQuickTryTracks().length === 0
+  );
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
   const [selectedTrack, setSelectedTrack] = useState<TrackItem | null>(null);
@@ -202,7 +224,6 @@ function TrackCodeWorkspace() {
   const trimmedQuery = query.trim();
   const isLinkMode = isSpotifyTrackLink(trimmedQuery);
   const lastCopiedTrack = recentTracks.find((item) => Boolean(item.isrc)) ?? null;
-  const isSheetOpen = selectedTrack !== null;
 
   const showToast = useCallback((message: string, tone: ToastState['tone'] = 'success') => {
     if (toastTimerRef.current) {
@@ -216,17 +237,17 @@ function TrackCodeWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
-    setIsQuickTryLoading(true);
 
     fetch('/api/quick-try')
-      .then((res) => (res.ok ? res.json() : { tracks: [] }))
-      .then((data: { tracks?: TrackItem[] }) => {
-        if (!cancelled && Array.isArray(data.tracks)) {
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { tracks?: TrackItem[] } | null) => {
+        if (!cancelled && data && Array.isArray(data.tracks) && data.tracks.length > 0) {
           setQuickTryTracks(data.tracks);
+          saveCachedQuickTryTracks(data.tracks);
         }
       })
       .catch(() => {
-        // Silent fallback if offline on cold load
+        // Offline snapshot already loaded if available
       })
       .finally(() => {
         if (!cancelled) {
@@ -234,8 +255,14 @@ function TrackCodeWorkspace() {
         }
       });
 
+    // Warm up lazy BottomSheet chunk after initial paint so first track tap stays 60fps
+    const warmTimer = window.setTimeout(() => {
+      void import('./components/BottomSheet');
+    }, 800);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(warmTimer);
     };
   }, []);
 
@@ -263,12 +290,16 @@ function TrackCodeWorkspace() {
   const executeLookup = useCallback(
     async (rawInput: string, mode: 'link' | 'search') => {
       if (mode === 'search') {
-        const cached = getCachedSearchResults(rawInput);
+        const cached = getCachedSearchResult(rawInput);
         if (cached) {
           if (abortControllerRef.current) {
             abortControllerRef.current.abort();
           }
-          setResults(cached);
+          const nextStatus = deriveApiStatus(cached);
+          if (nextStatus) {
+            setApiStatus(nextStatus);
+          }
+          setResults(cached.tracks);
           setErrorMessage(null);
           setIsRateLimited(false);
           setHasSearched(true);
@@ -296,17 +327,9 @@ function TrackCodeWorkspace() {
             error?: string;
           };
 
-          if (
-            typeof payload.spotifyHealthy === 'boolean' ||
-            typeof payload.deezerHealthy === 'boolean' ||
-            payload.source
-          ) {
-            const deezerDown = payload.deezerHealthy === false;
-            const spotifyOnline = payload.spotifyHealthy === true;
-            setApiStatus({
-              spotify: spotifyOnline ? 'online' : deezerDown ? 'down' : 'limited',
-              deezer: deezerDown ? 'down' : 'online',
-            });
+          const nextStatus = deriveApiStatus(payload);
+          if (nextStatus) {
+            setApiStatus(nextStatus);
           }
 
           if (!res.ok) {
@@ -323,13 +346,17 @@ function TrackCodeWorkspace() {
           setSelectedTrack(track);
 
           if (track.isrc) {
-            const copied = syncCopyIsrc(track.isrc);
+            const copied = await copyIsrcVerified(track.isrc);
             setRecentTracks(saveRecentTrack(track));
             if (copied) {
               setAutoCopiedSignal((s) => s + 1);
               showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
+            } else {
+              setAutoCopiedSignal(0);
+              showToast('Tap Copy ISRC below to copy', 'info');
             }
           } else {
+            setAutoCopiedSignal(0);
             showToast('No ISRC found for this upload', 'info');
           }
         } else {
@@ -340,25 +367,19 @@ function TrackCodeWorkspace() {
             | TrackItem[]
             | (SearchApiResponse & { error?: string });
 
-          if (!Array.isArray(payload) && (
-            typeof payload.spotifyHealthy === 'boolean' ||
-            typeof payload.deezerHealthy === 'boolean' ||
-            payload.source
-          )) {
-            const deezerDown = payload.deezerHealthy === false;
-            const spotifyOnline = payload.spotifyHealthy === true;
-            setApiStatus({
-              spotify: spotifyOnline ? 'online' : deezerDown ? 'down' : 'limited',
-              deezer: deezerDown ? 'down' : 'online',
-            });
+          const meta: Partial<SearchApiResponse> & { error?: string } = Array.isArray(payload)
+            ? {}
+            : payload;
+          const nextStatus = deriveApiStatus(meta);
+          if (nextStatus) {
+            setApiStatus(nextStatus);
           }
 
           if (!res.ok) {
             if (res.status === 429 || res.status >= 500) {
               setIsRateLimited(true);
             }
-            const errMsg = !Array.isArray(payload) ? payload.error : undefined;
-            throw new Error(errMsg || 'Unable to search Spotify right now.');
+            throw new Error(meta.error || 'Unable to search right now.');
           }
 
           const tracks = Array.isArray(payload)
@@ -367,7 +388,12 @@ function TrackCodeWorkspace() {
               ? payload.tracks
               : [];
 
-          setCachedSearchResults(rawInput, tracks);
+          setCachedSearchResult(rawInput, {
+            tracks,
+            source: meta.source,
+            spotifyHealthy: meta.spotifyHealthy,
+            deezerHealthy: meta.deezerHealthy,
+          });
           setResults(tracks);
           setHasSearched(true);
         }
@@ -377,6 +403,9 @@ function TrackCodeWorkspace() {
         }
         const isOfflineError =
           (typeof navigator !== 'undefined' && !navigator.onLine) || err instanceof TypeError;
+        if (isOfflineError) {
+          setIsRateLimited(true);
+        }
         const message = isOfflineError
           ? 'You appear to be offline. Reconnect to search Spotify, or browse your Recent tracks.'
           : err instanceof Error
@@ -422,12 +451,16 @@ function TrackCodeWorkspace() {
       };
     }
 
-    const cached = getCachedSearchResults(trimmedQuery);
+    const cached = getCachedSearchResult(trimmedQuery);
     if (cached) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      setResults(cached);
+      const nextStatus = deriveApiStatus(cached);
+      if (nextStatus) {
+        setApiStatus(nextStatus);
+      }
+      setResults(cached.tracks);
       setIsLoading(false);
       setErrorMessage(null);
       setIsRateLimited(false);
@@ -464,14 +497,16 @@ function TrackCodeWorkspace() {
   }, [trimmedQuery, isLinkMode, executeLookup]);
 
   const handleSelectTrack = useCallback(
-    (track: TrackItem, copiedSync: boolean) => {
+    (track: TrackItem, copied: boolean) => {
       (document.activeElement as HTMLElement | null)?.blur();
       setSelectedTrack(track);
       if (track.isrc) {
         setRecentTracks(saveRecentTrack(track));
-        if (copiedSync) {
+        if (copied) {
           setAutoCopiedSignal((s) => s + 1);
           showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
+        } else {
+          setAutoCopiedSignal(0);
         }
       } else {
         setAutoCopiedSignal(0);
@@ -530,14 +565,18 @@ function TrackCodeWorkspace() {
   }, []);
 
   const handleBottomSheetCopied = useCallback(
-    (isrc: string) => {
-      if (selectedTrack) {
-        setRecentTracks(saveRecentTrack(selectedTrack));
+    (isrc: string, copiedTrack?: TrackItem) => {
+      if (copiedTrack) {
+        setRecentTracks(saveRecentTrack(copiedTrack));
       }
       showToast(`Copied ${formatIsrcCode(isrc)}`, 'success');
     },
-    [selectedTrack, showToast]
+    [showToast]
   );
+
+  const handleBottomSheetCopyFailed = useCallback(() => {
+    showToast('Press and hold the code above to copy', 'info');
+  }, [showToast]);
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -558,13 +597,13 @@ function TrackCodeWorkspace() {
     void executeLookup(trimmedQuery, isLinkMode ? 'link' : 'search');
   };
 
-  const handleQuickCopyLast = () => {
+  const handleQuickCopyLast = async () => {
     if (!lastCopiedTrack?.isrc) return;
-    const copiedSync = syncCopyIsrc(lastCopiedTrack.isrc);
-    if (copiedSync && typeof navigator !== 'undefined' && navigator.vibrate) {
+    const copied = await copyIsrcVerified(lastCopiedTrack.isrc);
+    if (copied && typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(10);
     }
-    handleSelectTrack(lastCopiedTrack, copiedSync);
+    handleSelectTrack(lastCopiedTrack, copied);
   };
 
   const handleShareApp = async () => {
@@ -618,380 +657,350 @@ function TrackCodeWorkspace() {
 
   return (
     <div className="relative min-h-[100dvh] bg-black text-white">
-        <DynamicIslandToast toast={toast} />
+      <DynamicIslandToast toast={toast} />
 
-        <motion.div
-          animate={{
-            scale: isSheetOpen ? 0.96 : 1,
-            opacity: isSheetOpen ? 0.68 : 1,
-          }}
-          transition={{
-            duration: 0.25,
-            ease: IOS_CUBIC,
-          }}
-          className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
+      <div
+        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
+        style={{
+          overflow: 'clip',
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+        }}
+      >
+        {/* Breathing Ambient Background Glow behind top ~35% (pure CSS GPU animation) */}
+        <div
+          aria-hidden="true"
+          className="animate-ambient-breathe pointer-events-none absolute inset-x-0 top-0 z-0 h-[42vh]"
           style={{
-            overflow: 'clip',
-            paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
-            transformOrigin: 'center top',
+            transformOrigin: '50% 18%',
+            background:
+              'radial-gradient(68% 72% at 22% 14%, rgba(48, 209, 88, 0.11) 0%, transparent 72%), radial-gradient(75% 78% at 78% 18%, rgba(58, 75, 115, 0.14) 0%, transparent 75%)',
           }}
+        />
+
+        {/* Native iOS Large Title Header */}
+        <header
+          className="relative z-10 flex items-start justify-between px-4 pb-3"
+          style={{ paddingTop: 'max(18px, env(safe-area-inset-top))' }}
         >
-          {/* Breathing Ambient Background Glow behind top ~35% */}
-          <motion.div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[42vh]"
-            animate={{
-              scale: [1, 1.08, 1],
-              opacity: [0.85, 1, 0.85],
-            }}
-            transition={{
-              duration: 8,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-            style={{
-              transformOrigin: '50% 18%',
-              background:
-                'radial-gradient(68% 72% at 22% 14%, rgba(48, 209, 88, 0.11) 0%, transparent 72%), radial-gradient(75% 78% at 78% 18%, rgba(58, 75, 115, 0.14) 0%, transparent 75%)',
-            }}
-          />
-
-          {/* Native iOS Large Title Header */}
-          <header
-            className="relative z-10 flex items-start justify-between px-4 pb-3"
-            style={{ paddingTop: 'max(18px, env(safe-area-inset-top))' }}
-          >
-            <div className="flex flex-col items-start">
-              <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
-                TrackCode
-              </h1>
-              <p className="mt-1 flex items-center gap-1.5 pl-[1.5px] text-[11px] font-semibold leading-none uppercase tracking-[0.14em] text-[#8E8E93]">
-                <span>ISRC FINDER</span>
-                <svg
-                  width="14"
-                  height="9"
-                  viewBox="0 0 32 20"
-                  fill="none"
-                  aria-label="Sri Lanka"
-                  role="img"
-                  className="h-[9px] w-[14px] shrink-0 rounded-[2px] opacity-85 ring-1 ring-white/15"
-                >
-                  <rect width="32" height="20" fill="#E5AE2B" />
-                  <rect x="1.5" y="1.5" width="4.4" height="17" fill="#00534E" />
-                  <rect x="5.9" y="1.5" width="4.4" height="17" fill="#D96B08" />
-                  <rect x="11.8" y="1.5" width="18.7" height="17" fill="#821536" />
-                  <circle cx="13.2" cy="2.9" r="0.8" fill="#E5AE2B" />
-                  <circle cx="29.1" cy="2.9" r="0.8" fill="#E5AE2B" />
-                  <circle cx="13.2" cy="17.1" r="0.8" fill="#E5AE2B" />
-                  <circle cx="29.1" cy="17.1" r="0.8" fill="#E5AE2B" />
-                  <path
-                    d="M16.2 5.3v6.1M15.4 10.6h1.6"
-                    stroke="#E5AE2B"
-                    strokeWidth="0.95"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M16.9 9.1c1-.7 2.4-.8 3.6-.3.8-1 2.2-1.2 3.3-.6.9.5 1.5 1.4 1.4 2.4.7-.3 1.4.1 1.6.8.2.8-.3 1.6-1 1.9l.8 1.5h-1.3l-.8-1.5c-.7.1-1.4-.1-1.9-.5l-.4 2h-1.2l.2-2.1c-.7-.1-1.4-.3-2-.7l-.9 2.8h-1.2l.8-3c-.6-.2-1.1-.6-1.4-1.1-.3-.5-.1-1.2.4-1.6z"
-                    fill="#E5AE2B"
-                  />
-                </svg>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-0.5">
-              <motion.button
-                type="button"
-                onClick={() => void handleShareApp()}
-                whileTap={{ scale: 0.95 }}
-                transition={SPRING_BUTTON}
-                aria-label="Share TrackCode"
-                className="liquid-glass flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full text-white transition-colors hover:bg-white/[0.1] active:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-              >
-                <Share className="h-[17px] w-[17px] text-[#AEAEB2]" />
-              </motion.button>
-              <PWAInstallButton />
-            </div>
-          </header>
-
-          {/* Floating Sticky Hero Liquid Glass Search Bar */}
-          <div className="sticky top-0 z-20 px-4 py-2">
-            <form
-              onSubmit={handleSearchSubmit}
-              className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
-            >
-              <span className="pointer-events-none flex pl-4">
-                {isLinkMode ? (
-                  <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
-                ) : (
-                  <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
-                )}
-              </span>
-
-              <div className="relative flex min-w-0 flex-1 items-center">
-                <input
-                  ref={inputRef}
-                  type="search"
-                  inputMode="search"
-                  enterKeyHint="search"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  value={query}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
-                  aria-label="Search song, artist, or paste Spotify link"
-                  className="min-h-[56px] w-full bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-                />
-
-                {query.length === 0 && !isSearchFocused && (
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 left-3 right-2 flex items-center overflow-hidden"
-                  >
-                    <AnimatePresence mode="wait" initial={false}>
-                      <motion.span
-                        key={placeholderIndex}
-                        initial={{ opacity: 0, y: 4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.28, ease: 'easeOut' }}
-                        className="truncate text-[16px] text-white/[0.58]"
-                      >
-                        {PLACEHOLDER_MESSAGES[placeholderIndex]}
-                      </motion.span>
-                    </AnimatePresence>
-                  </div>
-                )}
-              </div>
-
-              {query.length === 0 ? (
-                <motion.button
-                  type="button"
-                  onClick={() => void handlePasteFromClipboard()}
-                  whileTap={{ scale: 0.97 }}
-                  transition={SPRING_BUTTON}
-                  className="mr-2 flex min-h-[36px] min-w-[44px] shrink-0 items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
-                >
-                  <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
-                  <span>Paste</span>
-                </motion.button>
-              ) : (
-                <motion.button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleClearInput();
-                  }}
-                  whileTap={{ scale: 0.94 }}
-                  transition={SPRING_BUTTON}
-                  aria-label="Clear search"
-                  className="relative z-20 mr-0.5 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
-                >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
-                    <X className="h-3.5 w-3.5 stroke-[2.6]" />
-                  </span>
-                </motion.button>
-              )}
-            </form>
+          <div className="flex flex-col items-start">
+            <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
+              TrackCode
+            </h1>
+            <p className="mt-1 flex items-center gap-1.5 pl-[1.5px] text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-[#8E8E93]">
+              <span>ISRC FINDER</span>
+              <SriLankaFlag />
+            </p>
           </div>
 
-          {/* Main Content Area */}
-          <main className="relative z-10 flex-1 px-4 pt-2 pb-24">
-            {trimmedQuery ? (
-              <>
-                {isLoading && (
-                  <div className="liquid-glass overflow-hidden rounded-[20px]">
-                    <SkeletonRows count={6} />
-                  </div>
-                )}
+          <div className="flex items-center gap-2 pt-0.5">
+            <motion.button
+              type="button"
+              onClick={() => void handleShareApp()}
+              whileTap={{ scale: 0.95 }}
+              transition={SPRING_BUTTON}
+              aria-label="Share TrackCode"
+              className="liquid-glass flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-white transition-colors hover:bg-white/[0.1] active:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+            >
+              <Share className="h-[17px] w-[17px] text-[#AEAEB2]" />
+            </motion.button>
+            <PWAInstallButton />
+          </div>
+        </header>
 
-                {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
-                  <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
-                    <p className="text-[13px] text-[#8E8E93]">
-                      Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
-                    </p>
-                  </div>
-                )}
+        {/* Floating Sticky Hero Liquid Glass Search Bar */}
+        <div className="sticky top-0 z-20 px-4 py-2">
+          <form
+            onSubmit={handleSearchSubmit}
+            className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
+          >
+            <span className="pointer-events-none flex pl-4">
+              {isLinkMode ? (
+                <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
+              ) : (
+                <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
+              )}
+            </span>
 
-                {!isLoading && errorMessage && (
-                  <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
-                    {/* Subtle top radial specular glow (zero backdrop-filter) */}
-                    <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0 top-0 h-32"
-                      style={{
-                        background:
-                          'radial-gradient(75% 85% at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 159, 10, 0.05) 48%, transparent 100%)',
-                      }}
-                    />
+            <div className="relative flex min-w-0 flex-1 items-center">
+              <input
+                ref={inputRef}
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={query}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
+                aria-label="Search song, artist, or paste Spotify link"
+                className="min-h-[56px] w-full bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+              />
 
-                    {/* Centered top pill handle */}
-                    <div className="relative mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
-
-                    <h3 className="relative text-[18px] font-semibold tracking-[-0.02em] text-white">
-                      {isRateLimited
-                        ? "oh- well that didn't work 🙁"
-                        : "Lookup didn't complete"}
-                    </h3>
-
-                    <p className="relative mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#98989D]">
-                      {isRateLimited
-                        ? "Too many people are searching at once! I'm working to get it fixed"
-                        : errorMessage}
-                    </p>
-
-                    {/* Report issue button with GPU-composited pulsing red border glow */}
-                    <motion.a
-                      href="https://instagram.com/enjay404"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      whileTap={{ scale: 0.97 }}
-                      transition={SPRING_BUTTON}
-                      className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+              {query.length === 0 && !isSearchFocused && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 left-3 right-2 flex items-center overflow-hidden"
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={placeholderIndex}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.28, ease: 'easeOut' }}
+                      className="truncate text-[16px] text-white/[0.58]"
                     >
-                      <motion.span
-                        aria-hidden="true"
-                        animate={{ opacity: [0.35, 1, 0.35] }}
-                        transition={{
-                          duration: 2.2,
-                          repeat: Infinity,
-                          ease: 'easeInOut',
-                        }}
-                        className="pointer-events-none absolute -inset-[1px] rounded-2xl border border-[#FF453A] shadow-[0_0_16px_rgba(255,69,58,0.45)]"
-                      />
-                      <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF453A] opacity-65" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF453A]" />
-                      </span>
-                      <span className="relative">Report it&apos;s not working</span>
-                    </motion.a>
+                      {PLACEHOLDER_MESSAGES[placeholderIndex]}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
 
-                    {/* Full-width solid white rounded-2xl pill CTA */}
+            {query.length === 0 ? (
+              <motion.button
+                type="button"
+                onClick={() => void handlePasteFromClipboard()}
+                whileTap={{ scale: 0.97 }}
+                transition={SPRING_BUTTON}
+                className="mr-2 flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
+                <span>Paste</span>
+              </motion.button>
+            ) : (
+              <motion.button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClearInput();
+                }}
+                whileTap={{ scale: 0.94 }}
+                transition={SPRING_BUTTON}
+                aria-label="Clear search"
+                className="relative z-20 mr-0.5 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
+                  <X className="h-3.5 w-3.5 stroke-[2.6]" />
+                </span>
+              </motion.button>
+            )}
+          </form>
+        </div>
+
+        {/* Main Content Area */}
+        <main className="relative z-10 flex-1 px-4 pt-2 pb-24">
+          {trimmedQuery ? (
+            <>
+              {isLoading && (
+                <div className="liquid-glass overflow-hidden rounded-[20px]">
+                  <SkeletonRows count={6} />
+                </div>
+              )}
+
+              {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
+                <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
+                  <p className="text-[13px] text-[#8E8E93]">
+                    Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
+                  </p>
+                </div>
+              )}
+
+              {!isLoading && errorMessage && (
+                <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
+                  {/* Subtle top radial specular glow (zero backdrop-filter) */}
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-32"
+                    style={{
+                      background:
+                        'radial-gradient(75% 85% at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 159, 10, 0.05) 48%, transparent 100%)',
+                    }}
+                  />
+
+                  {/* Centered top pill handle */}
+                  <div className="relative mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
+
+                  <h3 className="relative text-[18px] font-semibold tracking-[-0.02em] text-white">
+                    {isRateLimited ? "oh- well that didn't work 🙁" : "Link couldn't be read"}
+                  </h3>
+
+                  <p className="relative mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#98989D]">
+                    {isRateLimited
+                      ? "Too many people are searching at once! I'm working to get it fixed"
+                      : errorMessage}
+                  </p>
+
+                  {isRateLimited ? (
+                    <>
+                      {/* Report issue button strictly on 429 / server failures */}
+                      <motion.a
+                        href="https://instagram.com/enjay404"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        whileTap={{ scale: 0.97 }}
+                        transition={SPRING_BUTTON}
+                        className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+                      >
+                        <motion.span
+                          aria-hidden="true"
+                          animate={{ opacity: [0.35, 1, 0.35] }}
+                          transition={{
+                            duration: 2.2,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="pointer-events-none absolute -inset-[1px] rounded-2xl border border-[#FF453A] shadow-[0_0_16px_rgba(255,69,58,0.45)]"
+                        />
+                        <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF453A] opacity-65" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF453A]" />
+                        </span>
+                        <span className="relative">Report it&apos;s not working</span>
+                      </motion.a>
+
+                      <motion.button
+                        type="button"
+                        onClick={handleRetry}
+                        whileTap={{ scale: 0.97 }}
+                        transition={SPRING_BUTTON}
+                        className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                      >
+                        <RotateCcw className="h-4 w-4 stroke-[2.2]" />
+                        <span>Try again</span>
+                      </motion.button>
+                    </>
+                  ) : (
                     <motion.button
                       type="button"
-                      onClick={handleRetry}
+                      onClick={handleClearInput}
                       whileTap={{ scale: 0.97 }}
                       transition={SPRING_BUTTON}
-                      className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                      className="relative mt-5 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[15px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
                     >
-                      <RotateCcw className="h-4 w-4 stroke-[2.2]" />
-                      <span>Try again</span>
+                      <Search className="h-4 w-4 stroke-[2.2]" />
+                      <span>Search by song title instead</span>
                     </motion.button>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
 
-                {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
+              {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
+                <Suspense
+                  fallback={
+                    <div className="liquid-glass overflow-hidden rounded-[20px]">
+                      <SkeletonRows count={3} />
+                    </div>
+                  }
+                >
                   <EmptySearchView
                     query={trimmedQuery}
                     onClearSearch={handleClearInput}
                     onPasteLink={() => void handlePasteFromClipboard()}
                   />
-                )}
+                </Suspense>
+              )}
 
-                {!isLoading && !errorMessage && results.length > 0 && (
-                  <section aria-label="Search results" className="pt-1">
-                    <div className="flex items-center justify-between px-1 pb-2">
-                      <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
-                        {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}
-                      </h2>
-                    </div>
-                    <div className="liquid-glass overflow-hidden rounded-[20px]">
-                      {results.map((track, index) => (
-                        <TrackRow
-                          key={track.id}
-                          track={track}
-                          index={index}
-                          onSelect={handleSelectTrack}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </>
-            ) : (
-              <div className="space-y-5 pt-1">
-                {/* Last Copied Quick-Grab Strip (slimmer secondary hierarchy under hero search bar) */}
-                {lastCopiedTrack?.isrc && (
-                  <section aria-label="Last copied ISRC">
-                    <motion.button
-                      type="button"
-                      onClick={handleQuickCopyLast}
-                      whileTap={{ scale: 0.97 }}
-                      transition={SPRING_BUTTON}
-                      style={{
-                        background: 'rgba(28, 28, 30, 0.78)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)',
-                      }}
-                      className="group flex w-full items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-colors duration-100 hover:bg-white/[0.04] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
-                    >
-                      <span className="text-xs font-medium text-[#8E8E93]">
-                        Last copied
+              {!isLoading && !errorMessage && results.length > 0 && (
+                <section aria-label="Search results" className="pt-1">
+                  <div className="flex items-center justify-between px-1 pb-2">
+                    <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
+                      {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}
+                    </h2>
+                  </div>
+                  <div className="liquid-glass overflow-hidden rounded-[20px]">
+                    {results.map((track) => (
+                      <TrackRow
+                        key={track.id}
+                        track={track}
+                        onSelect={handleSelectTrack}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          ) : (
+            <div className="space-y-5 pt-1">
+              {/* Last Copied Quick-Grab Strip */}
+              {lastCopiedTrack?.isrc && (
+                <section aria-label="Last copied ISRC">
+                  <button
+                    type="button"
+                    onClick={() => void handleQuickCopyLast()}
+                    className="liquid-glass-strip group flex w-full cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                  >
+                    <span className="text-xs font-medium text-[#8E8E93]">
+                      Last copied
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-mono-isrc whitespace-nowrap text-xs font-medium tracking-[0.02em] text-[#D1D1D6]">
+                        {formatIsrcCode(lastCopiedTrack.isrc)}
                       </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="font-mono-isrc whitespace-nowrap text-xs font-medium tracking-[0.02em] text-[#D1D1D6]">
-                          {formatIsrcCode(lastCopiedTrack.isrc)}
-                        </span>
-                        <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105" />
-                      </span>
-                    </motion.button>
-                  </section>
-                )}
+                      <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105" />
+                    </span>
+                  </button>
+                </section>
+              )}
 
-                {/* Recent History Inset Grouped Liquid Glass Card */}
-                {recentTracks.length > 0 && (
-                  <TrackListSection
-                    title="Recent"
-                    ariaLabel="Recent copied tracks"
-                    tracks={recentTracks}
-                    onSelect={handleSelectTrack}
-                    onClear={handleClearRecent}
-                  />
-                )}
+              {/* Recent History Inset Grouped Liquid Glass Card */}
+              {recentTracks.length > 0 && (
+                <TrackListSection
+                  title="Recent"
+                  ariaLabel="Recent copied tracks"
+                  tracks={recentTracks}
+                  onSelect={handleSelectTrack}
+                  onClear={handleClearRecent}
+                />
+              )}
 
-                {/* Popular Hits Inset Grouped Liquid Glass Card */}
-                {(isQuickTryLoading || quickTryTracks.length > 0) && (
-                  <TrackListSection
-                    title="POPULAR HITS"
-                    ariaLabel="Popular Hits"
-                    tracks={quickTryTracks}
-                    isLoading={isQuickTryLoading}
-                    skeletonCount={5}
-                    onSelect={handleSelectTrack}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Live API Health Indicator Pill (shown on both Home & Results views) */}
-            <div className="mt-5">
-              <ApiStatusPill status={apiStatus} />
+              {/* Popular Hits Inset Grouped Liquid Glass Card */}
+              {(isQuickTryLoading || quickTryTracks.length > 0) && (
+                <TrackListSection
+                  title="POPULAR HITS"
+                  ariaLabel="Popular Hits"
+                  tracks={quickTryTracks}
+                  isLoading={isQuickTryLoading}
+                  skeletonCount={5}
+                  onSelect={handleSelectTrack}
+                />
+              )}
             </div>
-          </main>
+          )}
 
-        </motion.div>
-
-        {/* Pinned Floating Creator Footer Dock (z-20: above content, covered by BottomSheet z-40) */}
-        <FooterDock />
-
-        {/* Offline Status Indicator */}
-        {!isOnline && (
-          <div className="fixed bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg">
-            <WifiOff className="h-3.5 w-3.5" />
-            <span>Offline — Recent tracks still available</span>
+          {/* Live API Health Indicator Pill (shown on both Home & Results views) */}
+          <div className="mt-5">
+            <ApiStatusPill status={apiStatus} />
           </div>
-        )}
+        </main>
+      </div>
 
+      {/* Pinned Floating Creator Footer Dock */}
+      <FooterDock />
+
+      {/* Offline Status Indicator */}
+      {!isOnline && (
+        <div className="fixed bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg">
+          <WifiOff className="h-3.5 w-3.5" />
+          <span>Offline — Recent tracks still available</span>
+        </div>
+      )}
+
+      <Suspense fallback={null}>
         <BottomSheet
           track={selectedTrack}
           autoCopiedSignal={autoCopiedSignal}
           onClose={handleCloseSheet}
           onCopied={handleBottomSheetCopied}
+          onCopyFailed={handleBottomSheetCopyFailed}
           onSearchOtherVersions={handleSearchOtherVersions}
         />
+      </Suspense>
     </div>
   );
 }
@@ -1007,7 +1016,13 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      {showMaintenance ? <MaintenancePage /> : <TrackCodeWorkspace />}
+      {showMaintenance ? (
+        <Suspense fallback={<div className="min-h-[100dvh] bg-[#09090B]" />}>
+          <MaintenancePage />
+        </Suspense>
+      ) : (
+        <TrackCodeWorkspace />
+      )}
       <Analytics />
     </MotionConfig>
   );

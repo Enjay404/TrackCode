@@ -21,12 +21,24 @@ export default defineConfig(() => {
         ],
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['assets/aistudio/**', 'og-image.png', 'favicon-16x16.png', 'favicon-32x32.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+          globIgnores: ['assets/aistudio/**', 'og-image.png'],
           navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            {
+              urlPattern: /\/api\/quick-try$/,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'trackcode-quick-try-v1',
+                expiration: {
+                  maxEntries: 4,
+                  maxAgeSeconds: 7 * 24 * 60 * 60,
+                },
+              },
+            },
+          ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
     ],
