@@ -116,8 +116,8 @@ const FooterDock = memo(function FooterDock() {
           className="pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
             background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(14px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             border: '1px solid rgba(255, 255, 255, 0.12)',
             boxShadow:
               'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
@@ -136,8 +136,8 @@ const FooterDock = memo(function FooterDock() {
           className="group pointer-events-auto inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12px] font-medium text-[#AEAEB2] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
           style={{
             background: 'rgba(28, 28, 30, 0.72)',
-            backdropFilter: 'blur(14px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             border: '1px solid rgba(255, 255, 255, 0.12)',
             boxShadow:
               'inset 0 1px 0.5px rgba(255, 255, 255, 0.22), 0 8px 24px rgba(0, 0, 0, 0.6)',
@@ -517,7 +517,7 @@ export default function App() {
             opacity: isSheetOpen ? 0.68 : 1,
           }}
           transition={{
-            duration: 0.3,
+            duration: 0.28,
             ease: IOS_CUBIC,
           }}
           className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"

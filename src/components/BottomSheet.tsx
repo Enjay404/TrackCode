@@ -31,8 +31,8 @@ const SPRING_BUTTON = {
 
 const IOS_EASE = [0.22, 1, 0.36, 1] as const;
 
-const AUTO_COPY_RESET_MS = 1800;
-const MANUAL_COPY_RESET_MS = 2000;
+const AUTO_COPY_RESET_MS = 750;
+const MANUAL_COPY_RESET_MS = 1000;
 
 export const BottomSheet = memo(function BottomSheet({
   track,
@@ -91,7 +91,7 @@ export const BottomSheet = memo(function BottomSheet({
     setCopiedState(true);
     const glowDelayTimer = window.setTimeout(() => {
       setPulseCount((c) => c + 1);
-    }, 280);
+    }, 120);
     copyTimerRef.current = window.setTimeout(() => {
       copyTimerRef.current = null;
       setCopiedState(false);
@@ -186,7 +186,7 @@ export const BottomSheet = memo(function BottomSheet({
               z: 0,
               opacity: 1,
               transition: {
-                duration: 0.3,
+                duration: 0.28,
                 ease: IOS_EASE,
               },
             }}
@@ -206,8 +206,8 @@ export const BottomSheet = memo(function BottomSheet({
             style={{
               paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
               background: 'rgba(28, 28, 30, 0.88)',
-              backdropFilter: 'blur(16px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
               willChange: 'transform, opacity',
               contain: 'layout style paint',
             }}
@@ -360,7 +360,7 @@ export const BottomSheet = memo(function BottomSheet({
                         : { opacity: 0 }
                     }
                     transition={{
-                      duration: 1.3,
+                      duration: 0.65,
                       times: [0, 0.15, 0.55, 1],
                       ease: 'easeOut',
                     }}
@@ -383,21 +383,29 @@ export const BottomSheet = memo(function BottomSheet({
                   </span>
                 </motion.button>
 
-                <div>
-                  <motion.button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleManualCopy}
-                    whileTap={{ scale: 0.97 }}
-                    transition={SPRING_BUTTON}
-                    className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-200 focus-visible:outline-none ${
-                      copiedState
-                        ? 'bg-[#30D158] text-black'
-                        : 'bg-white text-black active:bg-[#2C2C2E] active:text-white'
-                    }`}
-                  >
+                <motion.button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleManualCopy}
+                  whileTap={{ scale: 0.97 }}
+                  transition={SPRING_BUTTON}
+                  className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none ${
+                    copiedState
+                      ? 'bg-[#30D158] text-black'
+                      : 'bg-white text-black active:bg-[#2C2C2E] active:text-white'
+                  }`}
+                >
+                  <AnimatePresence mode="wait" initial={false}>
                     {copiedState ? (
-                      <>
+                      <motion.span
+                        key="copied"
+                        initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                        transition={{ duration: 0.16, ease: IOS_EASE }}
+                        style={{ willChange: 'transform, opacity' }}
+                        className="inline-flex items-center justify-center gap-2"
+                      >
                         <svg
                           viewBox="0 0 24 24"
                           fill="none"
@@ -414,48 +422,23 @@ export const BottomSheet = memo(function BottomSheet({
                           />
                         </svg>
                         <span>Copied</span>
-                      </>
+                      </motion.span>
                     ) : (
-                      <>
+                      <motion.span
+                        key="copy"
+                        initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                        transition={{ duration: 0.18, ease: IOS_EASE }}
+                        style={{ willChange: 'transform, opacity' }}
+                        className="inline-flex items-center justify-center gap-2"
+                      >
                         <Copy className="h-4 w-4 stroke-[2.2]" />
                         <span>Copy ISRC</span>
-                      </>
+                      </motion.span>
                     )}
-                  </motion.button>
-
-                  <div
-                    aria-hidden={!copiedState}
-                    className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                      copiedState ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
-                    }`}
-                  >
-                    <div className="min-h-0 overflow-hidden">
-                      <div
-                        className={`flex justify-center pt-2.5 transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                          copiedState ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
-                        }`}
-                        style={{ willChange: 'transform, opacity' }}
-                      >
-                        <a
-                          href="https://ko-fi.com/enjay404"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          tabIndex={copiedState ? 0 : -1}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          className="group inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[13px] font-normal text-[#8E8E93] transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
-                        >
-                          <span>Posted your Story? Buy me a Ko-fi</span>
-                          <span
-                            aria-hidden="true"
-                            className="text-[#FF9F0A] drop-shadow-[0_0_6px_rgba(255,159,10,0.38)] transition-all duration-150 group-hover:text-[#30D158] group-hover:drop-shadow-[0_0_8px_rgba(48,209,88,0.5)]"
-                          >
-                            ☕
-                          </span>
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  </AnimatePresence>
+                </motion.button>
               </div>
             ) : (
               <div className="mt-5 space-y-3">
