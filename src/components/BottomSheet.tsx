@@ -23,8 +23,6 @@ interface BottomSheetProps {
   onSearchOtherVersions: (track: TrackItem) => void;
 }
 
-type SheetPhase = 'closed' | 'opening' | 'open' | 'closing';
-
 const SPRING_BUTTON = {
   type: 'spring' as const,
   stiffness: 500,
@@ -32,8 +30,8 @@ const SPRING_BUTTON = {
 };
 
 const IOS_EASE = [0.22, 1, 0.36, 1] as const;
-const SHEET_DURATION_MS = 260;
-const AUTO_COPY_RESET_MS = 750;
+const SHEET_DURATION_MS = 280;
+const AUTO_COPY_RESET_MS = 950;
 const MANUAL_COPY_RESET_MS = 1000;
 
 export const BottomSheet = memo(function BottomSheet({
@@ -44,15 +42,8 @@ export const BottomSheet = memo(function BottomSheet({
   onSearchOtherVersions,
 }: BottomSheetProps) {
   const [lastTrack, setLastTrack] = useState<TrackItem | null>(track);
-  const [phase, setPhase] = useState<SheetPhase>(track ? 'opening' : 'closed');
-
   if (track && track !== lastTrack) {
     setLastTrack(track);
-  }
-  if (track && (phase === 'closed' || phase === 'closing')) {
-    setPhase('opening');
-  } else if (!track && (phase === 'opening' || phase === 'open')) {
-    setPhase('closing');
   }
 
   const isOpen = track !== null;
@@ -93,32 +84,7 @@ export const BottomSheet = memo(function BottomSheet({
     };
   }, []);
 
-  // Step 1 -> Step 2: after showing at translate3d(0, 100%, 0), transition to 0 on next rAF
-  useEffect(() => {
-    if (phase !== 'opening') return;
-    // Force layout flush so the initial off-screen translate3d(0, 100%, 0) frame commits
-    void sheetRef.current?.offsetHeight;
-    const rafId = window.requestAnimationFrame(() => {
-      setPhase('open');
-    });
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [phase]);
-
-  // Set display: none once the 260ms closing slide completes
-  useEffect(() => {
-    if (phase !== 'closing') return;
-    const timerId = window.setTimeout(() => {
-      setPhase('closed');
-      setGlowReady(false);
-    }, SHEET_DURATION_MS + 10);
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, [phase]);
-
-  // Defer dominant color extraction until after the 260ms slide-up finishes
+  // Defer dominant color extraction until after the 280ms GPU slide-up finishes
   useEffect(() => {
     if (!track) return;
 
@@ -254,9 +220,7 @@ export const BottomSheet = memo(function BottomSheet({
 
     if (sheetRef.current) {
       sheetRef.current.style.transition = '';
-      if (!shouldClose) {
-        sheetRef.current.style.transform = '';
-      }
+      sheetRef.current.style.transform = '';
     }
 
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -269,67 +233,63 @@ export const BottomSheet = memo(function BottomSheet({
   };
 
   const formattedIsrc = activeTrack?.isrc ? formatIsrcCode(activeTrack.isrc) : null;
-  const isVisible = phase !== 'closed';
-  const isSheetOpenPosition = phase === 'open';
 
   return (
     <div
-      className="fixed inset-0 z-40 items-end justify-center"
+      className="fixed inset-0 z-40 flex items-end justify-center"
       role="dialog"
       aria-modal={isOpen}
       aria-hidden={!isOpen}
       aria-label={activeTrack?.name || 'Track details'}
-      style={{
-        display: isVisible ? 'flex' : 'none',
-        pointerEvents: isOpen ? 'auto' : 'none',
-      }}
+      style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
     >
-      {/* Modal dimming overlay (zero backdrop-filter, zero idle GPU layers) */}
+      {/* Pre-mounted modal dimming overlay (zero backdrop-filter) */}
       <div
         onClick={isOpen ? onClose : undefined}
         className="fixed inset-0 bg-black/65"
         style={{
-          opacity: isSheetOpenPosition ? 1 : 0,
+          opacity: isOpen ? 1 : 0,
+          visibility: isOpen ? 'visible' : 'hidden',
           pointerEvents: isOpen ? 'auto' : 'none',
-          transition:
-            phase === 'opening'
-              ? 'none'
-              : `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+          willChange: 'opacity',
+          backfaceVisibility: 'hidden',
+          contain: 'strict',
+          transition: isOpen
+            ? `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0ms`
+            : `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear ${SHEET_DURATION_MS}ms`,
         }}
       />
 
-      {/* Slide-up bottom sheet with frosted dark gradient and top highlight */}
+      {/* Permanently mounted warm GPU bottom sheet */}
       <div
         ref={sheetRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
-        onTransitionEnd={(e) => {
-          if (e.target === sheetRef.current && e.propertyName === 'transform' && phase === 'closing') {
-            setPhase('closed');
-            setGlowReady(false);
-          }
-        }}
         style={{
-          transform: isSheetOpenPosition ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+          transform: isOpen ? 'translate3d(0, 0, 0)' : 'translate3d(0, 105%, 0)',
+          opacity: isOpen ? 1 : 0,
+          visibility: isOpen ? 'visible' : 'hidden',
+          pointerEvents: isOpen ? 'auto' : 'none',
           paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-          background:
-            'linear-gradient(180deg, rgba(36, 36, 40, 0.98) 0%, rgba(20, 20, 22, 0.99) 100%)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.18)',
+          background: 'rgba(28, 28, 30, 0.88)',
+          backdropFilter: 'blur(12px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+          willChange: 'transform, opacity',
+          backfaceVisibility: 'hidden',
           contain: 'layout style paint',
           touchAction: 'pan-x',
-          transition:
-            phase === 'opening'
-              ? 'none'
-              : `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+          transition: isOpen
+            ? `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0ms`
+            : `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear ${SHEET_DURATION_MS}ms`,
         }}
-        className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] px-5 pt-2.5 shadow-[0_-8px_20px_rgba(0,0,0,0.45)]"
+        className="relative z-10 w-full max-w-[480px] overflow-hidden rounded-t-[28px] border-t border-white/10 px-5 pt-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
       >
-        {/* Ambient radial glow tinted with album cover dominant color (pure radial-gradient) */}
+        {/* Ambient radial glow tinted with album cover dominant color */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full transition-opacity duration-300 ease-out"
+          className="pointer-events-none absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full transition-opacity duration-400 ease-out"
           style={{
             opacity: glowReady ? 0.3 : 0.12,
             background: `radial-gradient(circle, rgba(${glowRgb}, 0.85) 0%, rgba(${glowRgb}, 0.24) 45%, transparent 72%)`,
@@ -360,7 +320,7 @@ export const BottomSheet = memo(function BottomSheet({
 
         {/* Track header: 88x88 cover art (reusing decoded medium URL) + title + artist */}
         <div className="relative flex items-center gap-4">
-          <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[14px] bg-[#2C2C2E] shadow-[0_8px_20px_rgba(0,0,0,0.45)] ring-1 ring-white/10">
+          <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[14px] bg-[#2C2C2E] shadow-[0_8px_24px_rgba(0,0,0,0.5)] ring-1 ring-white/10">
             {artSrc && !imgError ? (
               <img
                 src={artSrc}
@@ -466,7 +426,7 @@ export const BottomSheet = memo(function BottomSheet({
                   times: [0, 0.15, 0.55, 1],
                   ease: 'easeOut',
                 }}
-                className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]/85"
+                className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]/85 shadow-[0_0_12px_rgba(48,209,88,0.16)]"
               />
               <div className="min-w-0">
                 <div className="text-[11px] font-medium tracking-wide text-[#8E8E93]">
@@ -506,6 +466,7 @@ export const BottomSheet = memo(function BottomSheet({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.96 }}
                     transition={{ duration: 0.16, ease: IOS_EASE }}
+                    style={{ willChange: 'transform, opacity' }}
                     className="inline-flex items-center justify-center gap-2"
                   >
                     <svg
@@ -532,6 +493,7 @@ export const BottomSheet = memo(function BottomSheet({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -6, scale: 0.96 }}
                     transition={{ duration: 0.18, ease: IOS_EASE }}
+                    style={{ willChange: 'transform, opacity' }}
                     className="inline-flex items-center justify-center gap-2"
                   >
                     <Copy className="h-4 w-4 stroke-[2.2]" />
@@ -592,15 +554,16 @@ export const BottomSheet = memo(function BottomSheet({
 
           <div
             aria-hidden={!guideOpen}
-            className={`grid transition-[grid-template-rows] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               guideOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] pointer-events-none'
             }`}
           >
             <div className="min-h-0 overflow-hidden">
               <div
-                className={`transition-[opacity,transform] duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                className={`transition-[opacity,transform] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
                   guideOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1.5'
                 }`}
+                style={{ willChange: 'transform, opacity' }}
               >
                 <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
                   <li className="flex gap-2.5">
