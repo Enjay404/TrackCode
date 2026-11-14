@@ -41,7 +41,6 @@ export const TrackRow = memo(function TrackRow({
   };
 
   const entranceDelayMs = Math.min(index, 12) * 45;
-  const rank = showRank ? (track.rank ?? index + 1) : null;
   const rankChange = track.rankChange ?? 0;
 
   return (
@@ -135,24 +134,10 @@ export const TrackRow = memo(function TrackRow({
         </div>
       </div>
 
-      {rank !== null && (
-        <span
-          className={`relative z-10 inline-flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-1 tabular-nums ${
-            rank === 1
-              ? 'border-white/[0.16] bg-white/[0.08]'
-              : 'border-white/[0.08] bg-white/[0.04]'
-          }`}
-        >
-          <span
-            className={`text-[12px] ${
-              rank === 1 ? 'font-semibold text-white' : 'font-medium text-white/75'
-            }`}
-          >
-            #{rank}
-          </span>
-          <span aria-hidden="true" className="h-2.5 w-[1px] bg-white/10" />
+      {showRank && (
+        <span className="relative z-10 shrink-0 tabular-nums">
           {rankChange === 'NEW' ? (
-            <span className="text-[10px] font-semibold tracking-wide text-white/80">
+            <span className="text-[10px] font-semibold tracking-wide text-white/75">
               NEW
             </span>
           ) : rankChange > 0 ? (
@@ -164,7 +149,7 @@ export const TrackRow = memo(function TrackRow({
               ▼ {Math.abs(rankChange)}
             </span>
           ) : (
-            <span className="text-[11px] font-semibold text-white/35">—</span>
+            <span className="text-[11px] font-semibold text-white/30">—</span>
           )}
         </span>
       )}

@@ -117,8 +117,12 @@ const TrackListSection = memo(function TrackListSection({
             Clear
           </button>
         ) : subtitle ? (
-          <span className="text-[10.5px] font-medium uppercase tracking-wider text-white/35">
-            {subtitle}
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-white/35">
+            <span>{subtitle}</span>
+            <span aria-hidden="true" className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white shadow-[0_0_8px_rgba(255,255,255,0.95),0_0_14px_rgba(255,255,255,0.55)]" />
+            </span>
           </span>
         ) : null}
       </div>
