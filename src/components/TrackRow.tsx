@@ -52,9 +52,9 @@ export const TrackRow = memo(function TrackRow({ track, index, onSelect }: Track
       style={{ willChange: 'transform, opacity' }}
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
-        {track.albumArt.medium && !imgError ? (
+        {(track.albumArt.medium || track.albumArt.large) && !imgError ? (
           <img
-            src={track.albumArt.medium}
+            src={track.albumArt.medium || track.albumArt.large || ''}
             alt={`${track.albumName || track.name} cover`}
             width={48}
             height={48}
