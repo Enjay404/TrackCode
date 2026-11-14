@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import { readFile, writeFile } from 'node:fs/promises';
 import type { AlbumType, TrackItem } from '../src/types/track.js';
 
 const UPSTREAM_TIMEOUT_MS = 8000;
@@ -603,7 +604,38 @@ function shouldFallbackToDeezer(error: unknown): boolean {
   );
 }
 
-const POPULAR_HITS_TRACKS: TrackItem[] = [
+const CHART_HISTORY_PATH = '/tmp/trackcode-chart-history.json';
+const CHART_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_CHART_HISTORY_DAYS = 14;
+
+const BASELINE_CHART_RANKS: Record<string, number> = {
+  USQX92600464: 2,
+  QZJ842603468: 1,
+  USSM12504190: 3,
+  USUG12607376: 6,
+  USSM12600141: 4,
+  GBARL2400510: 6,
+  USJ5G1714205: 2,
+  USAT21700928: 1,
+  USUM72401994: 3,
+  GBK3W2202321: 5,
+  USRC11300059: 4,
+};
+
+interface ChartHistoryFile {
+  days: Record<string, Record<string, number>>;
+}
+
+interface DailyChartCacheEntry {
+  dateKey: string;
+  tracks: TrackItem[];
+  expiresAt: number;
+}
+
+let dailyChartCache: DailyChartCacheEntry | null = null;
+let inflightDailyChartPromise: Promise<TrackItem[]> | null = null;
+
+const POPULAR_HITS_FALLBACK_TRACKS: TrackItem[] = [
   {
     id: '36DPRfPRHwkNKmFSXESAKG',
     name: 'Scott Street',
@@ -619,6 +651,8 @@ const POPULAR_HITS_TRACKS: TrackItem[] = [
     },
     isrc: 'USJ5G1714205',
     spotifyUrl: 'https://open.spotify.com/track/36DPRfPRHwkNKmFSXESAKG',
+    rank: 1,
+    rankChange: 1,
   },
   {
     id: '5cF0dROlMOK5uNZtivgu50',
@@ -635,6 +669,8 @@ const POPULAR_HITS_TRACKS: TrackItem[] = [
     },
     isrc: 'USAT21700928',
     spotifyUrl: 'https://open.spotify.com/track/5cF0dROlMOK5uNZtivgu50',
+    rank: 2,
+    rankChange: -1,
   },
   {
     id: '6dOtVTDdiauQNBQEDOtlAB',
@@ -651,6 +687,8 @@ const POPULAR_HITS_TRACKS: TrackItem[] = [
     },
     isrc: 'USUM72401994',
     spotifyUrl: 'https://open.spotify.com/track/6dOtVTDdiauQNBQEDOtlAB',
+    rank: 3,
+    rankChange: 0,
   },
   {
     id: '1fDFHXcykq4iw8Gg7s5hG9',
@@ -667,6 +705,8 @@ const POPULAR_HITS_TRACKS: TrackItem[] = [
     },
     isrc: 'GBK3W2202321',
     spotifyUrl: 'https://open.spotify.com/track/1fDFHXcykq4iw8Gg7s5hG9',
+    rank: 4,
+    rankChange: 1,
   },
   {
     id: '4rHZZAmHpZrA3iH5zx8frV',
@@ -683,8 +723,142 @@ const POPULAR_HITS_TRACKS: TrackItem[] = [
     },
     isrc: 'USRC11300059',
     spotifyUrl: 'https://open.spotify.com/track/4rHZZAmHpZrA3iH5zx8frV',
+    rank: 5,
+    rankChange: 'NEW',
   },
 ];
+
+function getUtcDateKey(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getChartTrackKey(track: TrackItem): string {
+  return track.isrc?.trim().toUpperCase() || track.id;
+}
+
+async function readChartHistory(): Promise<ChartHistoryFile> {
+  try {
+    const raw = await readFile(CHART_HISTORY_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<ChartHistoryFile>;
+    if (parsed && typeof parsed.days === 'object' && parsed.days !== null) {
+      return { days: parsed.days };
+    }
+  } catch {
+    // Missing or unreadable snapshot file on cold start
+  }
+  return { days: {} };
+}
+
+async function writeChartHistory(history: ChartHistoryFile): Promise<void> {
+  try {
+    const sortedDates = Object.keys(history.days).sort();
+    const trimmedDays: Record<string, Record<string, number>> = {};
+    for (const dateKey of sortedDates.slice(-MAX_CHART_HISTORY_DAYS)) {
+      trimmedDays[dateKey] = history.days[dateKey];
+    }
+    await writeFile(CHART_HISTORY_PATH, JSON.stringify({ days: trimmedDays }), 'utf8');
+  } catch {
+    // Ignore read-only filesystem errors
+  }
+}
+
+async function applyChartRankHistory(rawTracks: TrackItem[], dateKey: string): Promise<TrackItem[]> {
+  const history = await readChartHistory();
+  const previousDates = Object.keys(history.days)
+    .filter((d) => d < dateKey)
+    .sort();
+  const previousDayKey = previousDates[previousDates.length - 1];
+  const previousRanks = previousDayKey ? history.days[previousDayKey] : BASELINE_CHART_RANKS;
+
+  const todayRanks: Record<string, number> = {};
+  const rankedTracks = rawTracks.map((track, index) => {
+    const rank = index + 1;
+    const key = getChartTrackKey(track);
+    todayRanks[key] = rank;
+
+    const previousRank = previousRanks[key];
+    const rankChange: number | 'NEW' =
+      typeof previousRank === 'number' ? previousRank - rank : 'NEW';
+
+    return {
+      ...track,
+      rank,
+      rankChange,
+    };
+  });
+
+  if (!history.days[dateKey]) {
+    history.days[dateKey] = todayRanks;
+    await writeChartHistory(history);
+  }
+
+  return rankedTracks;
+}
+
+async function fetchDailyTopChartTracks(): Promise<TrackItem[]> {
+  const todayKey = getUtcDateKey();
+  if (dailyChartCache && dailyChartCache.dateKey === todayKey && dailyChartCache.expiresAt > Date.now()) {
+    return dailyChartCache.tracks;
+  }
+
+  if (inflightDailyChartPromise) {
+    return inflightDailyChartPromise;
+  }
+
+  inflightDailyChartPromise = (async () => {
+    try {
+      const chartRes = await fetch('https://api.deezer.com/chart/0/tracks?limit=8', {
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!chartRes.ok) {
+        throw new Error(`DEEZER_CHART_ERROR:${chartRes.status}`);
+      }
+
+      const chartPayload = (await chartRes.json()) as { data?: DeezerSearchTrack[] };
+      const chartEntries = Array.isArray(chartPayload.data) ? chartPayload.data.slice(0, 8) : [];
+      if (chartEntries.length === 0) {
+        throw new Error('DEEZER_CHART_EMPTY');
+      }
+
+      const detailResults = await Promise.all(
+        chartEntries.map(async (item): Promise<TrackItem | null> => {
+          try {
+            const detailRes = await fetch(`https://api.deezer.com/track/${item.id}`, {
+              signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+            });
+            if (!detailRes.ok) return null;
+            const detail = (await detailRes.json()) as DeezerTrackDetail & { error?: unknown };
+            if (!detail || detail.error || !detail.id) return null;
+            return normalizeDeezerTrack(detail);
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const tracks = detailResults.filter((t): t is TrackItem => Boolean(t));
+      if (tracks.length === 0) {
+        throw new Error('DEEZER_CHART_NO_DETAILS');
+      }
+
+      const rankedTracks = await applyChartRankHistory(tracks, todayKey);
+      dailyChartCache = {
+        dateKey: todayKey,
+        tracks: rankedTracks,
+        expiresAt: Date.now() + CHART_CACHE_TTL_MS,
+      };
+      return rankedTracks;
+    } catch {
+      return POPULAR_HITS_FALLBACK_TRACKS;
+    }
+  })();
+
+  try {
+    return await inflightDailyChartPromise;
+  } finally {
+    inflightDailyChartPromise = null;
+  }
+}
 
 app.get('/api/health', (_req: Request, res: Response) => {
   const configured = Boolean(
@@ -694,9 +868,10 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, configured });
 });
 
-app.get('/api/quick-try', (_req: Request, res: Response) => {
-  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-  res.json({ tracks: POPULAR_HITS_TRACKS });
+app.get('/api/quick-try', async (_req: Request, res: Response) => {
+  const tracks = await fetchDailyTopChartTracks();
+  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=172800');
+  res.json({ tracks, updatedAt: getUtcDateKey() });
 });
 
 async function executeSearchQuery(

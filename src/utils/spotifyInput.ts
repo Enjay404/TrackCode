@@ -3,7 +3,8 @@ import type { CachedSearchResult, TrackItem } from '../types/track';
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
 const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v2';
-const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v2';
+const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v3';
+const CHART_HISTORY_STORAGE_KEY = 'trackcode_chart_history_v1';
 const MAX_RECENT_TRACKS = 8;
 const MAX_SEARCH_CACHE_ENTRIES = 40;
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -149,6 +150,51 @@ export function saveCachedQuickTryTracks(tracks: TrackItem[]): void {
     localStorage.setItem(QUICK_TRY_STORAGE_KEY, JSON.stringify(tracks));
   } catch {
     // Ignore storage quota errors
+  }
+}
+
+export function syncQuickTryChartHistory(tracks: TrackItem[]): TrackItem[] {
+  if (!Array.isArray(tracks) || tracks.length === 0) return tracks;
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const currentRanks: Record<string, number> = {};
+  tracks.forEach((track, idx) => {
+    const key = track.isrc?.trim().toUpperCase() || track.id;
+    currentRanks[key] = track.rank ?? idx + 1;
+  });
+
+  try {
+    const raw = localStorage.getItem(CHART_HISTORY_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { days?: Record<string, Record<string, number>> }) : {};
+    const days: Record<string, Record<string, number>> =
+      parsed && typeof parsed.days === 'object' && parsed.days !== null ? parsed.days : {};
+
+    const previousDates = Object.keys(days)
+      .filter((d) => d < todayKey)
+      .sort();
+    const prevDateKey = previousDates[previousDates.length - 1];
+    const prevRanks = prevDateKey ? days[prevDateKey] : null;
+
+    const syncedTracks = prevRanks
+      ? tracks.map((track, idx) => {
+          const rank = track.rank ?? idx + 1;
+          const key = track.isrc?.trim().toUpperCase() || track.id;
+          const prevRank = prevRanks[key];
+          const rankChange: number | 'NEW' =
+            typeof prevRank === 'number' ? prevRank - rank : 'NEW';
+          return { ...track, rank, rankChange };
+        })
+      : tracks;
+
+    days[todayKey] = currentRanks;
+    const trimmedDays: Record<string, Record<string, number>> = {};
+    for (const dateKey of Object.keys(days).sort().slice(-14)) {
+      trimmedDays[dateKey] = days[dateKey];
+    }
+    localStorage.setItem(CHART_HISTORY_STORAGE_KEY, JSON.stringify({ days: trimmedDays }));
+    return syncedTracks;
+  } catch {
+    return tracks;
   }
 }
 

@@ -47,6 +47,7 @@ import {
   saveCachedQuickTryTracks,
   saveRecentTrack,
   setCachedSearchResult,
+  syncQuickTryChartHistory,
 } from './utils/spotifyInput';
 
 const BottomSheet = lazy(() => import('./components/BottomSheet'));
@@ -78,9 +79,11 @@ function useIsDesktop(): boolean {
 
 interface TrackListSectionProps {
   title: string;
+  subtitle?: string;
   ariaLabel: string;
   tracks: TrackItem[];
   selectedTrackId?: string | null;
+  showRanks?: boolean;
   isLoading?: boolean;
   skeletonCount?: number;
   onSelect: (track: TrackItem, copied: boolean) => void;
@@ -89,9 +92,11 @@ interface TrackListSectionProps {
 
 const TrackListSection = memo(function TrackListSection({
   title,
+  subtitle,
   ariaLabel,
   tracks,
   selectedTrackId = null,
+  showRanks = false,
   isLoading = false,
   skeletonCount = 4,
   onSelect,
@@ -103,7 +108,7 @@ const TrackListSection = memo(function TrackListSection({
         <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-[#8E8E93]">
           {title}
         </h2>
-        {onClear && (
+        {onClear ? (
           <button
             type="button"
             onClick={onClear}
@@ -111,7 +116,11 @@ const TrackListSection = memo(function TrackListSection({
           >
             Clear
           </button>
-        )}
+        ) : subtitle ? (
+          <span className="text-[10.5px] font-medium uppercase tracking-wider text-white/35">
+            {subtitle}
+          </span>
+        ) : null}
       </div>
       <div className="space-y-2">
         {isLoading ? (
@@ -123,6 +132,7 @@ const TrackListSection = memo(function TrackListSection({
               track={track}
               index={index}
               isSelected={selectedTrackId === track.id}
+              showRank={showRanks}
               onSelect={onSelect}
             />
           ))
@@ -297,8 +307,9 @@ function TrackCodeWorkspace() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { tracks?: TrackItem[] } | null) => {
         if (!cancelled && data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-          setQuickTryTracks(data.tracks);
-          saveCachedQuickTryTracks(data.tracks);
+          const synced = syncQuickTryChartHistory(data.tracks);
+          setQuickTryTracks(synced);
+          saveCachedQuickTryTracks(synced);
         }
       })
       .catch(() => {
@@ -1133,11 +1144,13 @@ function TrackCodeWorkspace() {
                     {(isQuickTryLoading || quickTryTracks.length > 0) && (
                       <TrackListSection
                         title="POPULAR HITS"
+                        subtitle="UPDATED DAILY"
                         ariaLabel="Popular Hits"
                         tracks={quickTryTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
+                        showRanks={true}
                         isLoading={isQuickTryLoading}
-                        skeletonCount={5}
+                        skeletonCount={8}
                         onSelect={handleSelectTrack}
                       />
                     )}

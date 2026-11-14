@@ -12,6 +12,7 @@ interface TrackRowProps {
   track: TrackItem;
   index?: number;
   isSelected?: boolean;
+  showRank?: boolean;
   onSelect: (track: TrackItem, copied: boolean) => void;
 }
 
@@ -19,6 +20,7 @@ export const TrackRow = memo(function TrackRow({
   track,
   index = 0,
   isSelected = false,
+  showRank = false,
   onSelect,
 }: TrackRowProps) {
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
@@ -39,6 +41,8 @@ export const TrackRow = memo(function TrackRow({
   };
 
   const entranceDelayMs = Math.min(index, 12) * 45;
+  const rank = showRank ? (track.rank ?? index + 1) : null;
+  const rankChange = track.rankChange ?? 0;
 
   return (
     <button
@@ -130,6 +134,40 @@ export const TrackRow = memo(function TrackRow({
           )}
         </div>
       </div>
+
+      {rank !== null && (
+        <span
+          className={`relative z-10 inline-flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-1 tabular-nums ${
+            rank === 1
+              ? 'border-white/[0.16] bg-white/[0.08]'
+              : 'border-white/[0.08] bg-white/[0.04]'
+          }`}
+        >
+          <span
+            className={`text-[12px] ${
+              rank === 1 ? 'font-semibold text-white' : 'font-medium text-white/75'
+            }`}
+          >
+            #{rank}
+          </span>
+          <span aria-hidden="true" className="h-2.5 w-[1px] bg-white/10" />
+          {rankChange === 'NEW' ? (
+            <span className="text-[10px] font-semibold tracking-wide text-white/80">
+              NEW
+            </span>
+          ) : rankChange > 0 ? (
+            <span className="text-[11px] font-semibold text-[#30D158]/90">
+              ▲ {rankChange}
+            </span>
+          ) : rankChange < 0 ? (
+            <span className="text-[11px] font-semibold text-[#FF453A]/85">
+              ▼ {Math.abs(rankChange)}
+            </span>
+          ) : (
+            <span className="text-[11px] font-semibold text-white/35">—</span>
+          )}
+        </span>
+      )}
 
       <ChevronRight
         className={`relative z-10 h-4 w-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px] ${

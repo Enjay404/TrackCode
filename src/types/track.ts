@@ -22,6 +22,8 @@ export interface TrackItem {
   };
   isrc: string | null;
   spotifyUrl: string;
+  rank?: number;
+  rankChange?: number | 'NEW';
 }
 
 export interface SearchApiResponse {
