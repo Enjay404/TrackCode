@@ -1,5 +1,12 @@
 export type AlbumType = 'album' | 'single' | 'compilation';
 
+export type ApiHealthStatus = 'online' | 'limited' | 'down';
+
+export interface ApiStatusState {
+  spotify: ApiHealthStatus;
+  deezer: ApiHealthStatus;
+}
+
 export interface TrackItem {
   id: string;
   name: string;
@@ -19,9 +26,15 @@ export interface TrackItem {
 
 export interface SearchApiResponse {
   tracks: TrackItem[];
-  query: string;
+  query?: string;
+  source?: 'spotify' | 'deezer';
+  spotifyHealthy?: boolean;
+  deezerHealthy?: boolean;
 }
 
 export interface TrackApiResponse {
   track: TrackItem;
+  source?: 'spotify' | 'deezer';
+  spotifyHealthy?: boolean;
+  deezerHealthy?: boolean;
 }

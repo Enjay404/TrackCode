@@ -241,6 +241,138 @@ function normalizeTrack(raw: SpotifyRawTrack): TrackItem {
   };
 }
 
+interface DeezerSearchTrack {
+  id: number;
+  title?: string;
+  explicit_lyrics?: boolean;
+  link?: string;
+  artist?: { name?: string };
+  album?: {
+    title?: string;
+    cover_medium?: string;
+    cover_big?: string;
+    cover?: string;
+    record_type?: string;
+  };
+}
+
+interface DeezerTrackDetail extends DeezerSearchTrack {
+  isrc?: string;
+  release_date?: string;
+  contributors?: Array<{ name?: string }>;
+}
+
+function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
+  const rawIsrc = detail.isrc?.trim().toUpperCase();
+  const cleanIsrc = rawIsrc && /^[A-Z0-9]{12}$/.test(rawIsrc) ? rawIsrc : rawIsrc || null;
+  const contributorNames = (detail.contributors ?? [])
+    .map((c) => c.name?.trim())
+    .filter((name): name is string => Boolean(name));
+  const primaryArtist = detail.artist?.name?.trim() || contributorNames[0] || 'Unknown Artist';
+  const artists =
+    contributorNames.length > 0 ? contributorNames.join(', ') : primaryArtist;
+
+  const coverMedium =
+    detail.album?.cover_medium || detail.album?.cover_big || detail.album?.cover || null;
+  const coverLarge =
+    detail.album?.cover_big || detail.album?.cover_medium || detail.album?.cover || null;
+  const yearMatch = (detail.release_date ?? '').match(/^(\d{4})/);
+
+  return {
+    id: `dz-${detail.id}`,
+    name: detail.title || 'Unknown Track',
+    artists,
+    primaryArtist,
+    albumName: detail.album?.title || '',
+    albumType: normalizeAlbumType(detail.album?.record_type),
+    releaseYear: yearMatch ? yearMatch[1] : '',
+    explicit: Boolean(detail.explicit_lyrics),
+    albumArt: {
+      medium: coverMedium,
+      large: coverLarge,
+    },
+    isrc: cleanIsrc,
+    spotifyUrl: detail.link || `https://www.deezer.com/track/${detail.id}`,
+  };
+}
+
+async function extractTitleFromSpotifyOembed(rawQuery: string): Promise<string | null> {
+  let targetUrl = rawQuery.trim();
+  const trackId = extractTrackIdFromText(targetUrl);
+  if (!/spotify\.com\//i.test(targetUrl) && trackId) {
+    targetUrl = `https://open.spotify.com/track/${trackId}`;
+  } else if (/^open\.spotify\.com\//i.test(targetUrl)) {
+    targetUrl = `https://${targetUrl}`;
+  }
+
+  if (!/spotify\.com\//i.test(targetUrl)) {
+    return null;
+  }
+
+  try {
+    const oembedRes = await fetch(
+      `https://open.spotify.com/oembed?url=${encodeURIComponent(targetUrl)}`,
+      { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) }
+    );
+    if (!oembedRes.ok) return null;
+    const oembedData = (await oembedRes.json()) as { title?: string };
+    return oembedData.title?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchDeezerTracks(rawQuery: string, limit = 6): Promise<TrackItem[]> {
+  let effectiveQuery = rawQuery.trim();
+  if (/spotify\.com\/|spotify:|^[A-Za-z0-9]{22}$/i.test(effectiveQuery)) {
+    const oembedTitle = await extractTitleFromSpotifyOembed(effectiveQuery);
+    if (oembedTitle) {
+      effectiveQuery = oembedTitle;
+    }
+  }
+
+  const searchRes = await fetch(
+    `https://api.deezer.com/search?q=${encodeURIComponent(effectiveQuery)}&limit=${limit}`,
+    { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) }
+  );
+  if (!searchRes.ok) {
+    throw new Error(`DEEZER_SEARCH_FAILED:${searchRes.status}`);
+  }
+
+  const searchJson = (await searchRes.json()) as {
+    data?: DeezerSearchTrack[];
+    error?: { message?: string };
+  };
+  if (searchJson.error) {
+    throw new Error(`DEEZER_API_ERROR:${searchJson.error.message || 'Unknown error'}`);
+  }
+
+  const items = Array.isArray(searchJson.data) ? searchJson.data.slice(0, limit) : [];
+  if (items.length === 0) return [];
+
+  const detailed = await Promise.all(
+    items.map(async (item) => {
+      try {
+        const trackRes = await fetch(`https://api.deezer.com/track/${item.id}`, {
+          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        });
+        if (!trackRes.ok) {
+          return normalizeDeezerTrack(item);
+        }
+        const detail = (await trackRes.json()) as DeezerTrackDetail & { error?: unknown };
+        if (!detail || detail.error || !detail.id) {
+          return normalizeDeezerTrack(item);
+        }
+        return normalizeDeezerTrack(detail);
+      } catch {
+        return normalizeDeezerTrack(item);
+      }
+    })
+  );
+
+  return detailed;
+}
+
 const ALLOWED_REDIRECT_HOSTS = new Set([
   'open.spotify.com',
   'spotify.link',
@@ -402,6 +534,23 @@ app.use(express.json());
 const searchCache = new BoundedTtlCache<TrackItem[]>(250, 15 * 60 * 1000);
 const trackCache = new BoundedTtlCache<TrackItem>(300, 60 * 60 * 1000);
 
+function shouldFallbackToDeezer(error: unknown): boolean {
+  if (error instanceof SpotifyRateLimitError) return true;
+  const msg = error instanceof Error ? error.message : '';
+  const status = (error as Error & { status?: number })?.status;
+  return (
+    status === 400 ||
+    status === 401 ||
+    status === 429 ||
+    msg === 'SPOTIFY_CREDENTIALS_MISSING' ||
+    msg.startsWith('SPOTIFY_AUTH_FAILED:400') ||
+    msg.startsWith('SPOTIFY_AUTH_FAILED:401') ||
+    msg.startsWith('SPOTIFY_API_ERROR:400') ||
+    msg.startsWith('SPOTIFY_API_ERROR:401') ||
+    msg.startsWith('SPOTIFY_API_ERROR:429')
+  );
+}
+
 const POPULAR_HITS_TRACKS: TrackItem[] = [
   {
     id: '0VjIjW4GlUZAMYd2vXMi3b',
@@ -518,7 +667,13 @@ app.get('/api/search', async (req: Request, res: Response) => {
   const cached = searchCache.get(normalizedQuery);
   if (cached) {
     res.setHeader('Cache-Control', cacheControlHeader);
-    res.json({ tracks: cached, query: normalizedQuery });
+    res.json({
+      tracks: cached,
+      query: normalizedQuery,
+      source: 'spotify',
+      spotifyHealthy: Date.now() >= spotifyRateLimitedUntil,
+      deezerHealthy: true,
+    });
     return;
   }
 
@@ -529,7 +684,13 @@ app.get('/api/search', async (req: Request, res: Response) => {
         const tracks = [cachedTrack];
         searchCache.set(normalizedQuery, tracks);
         res.setHeader('Cache-Control', cacheControlHeader);
-        res.json({ tracks, query: normalizedQuery });
+        res.json({
+          tracks,
+          query: normalizedQuery,
+          source: 'spotify',
+          spotifyHealthy: Date.now() >= spotifyRateLimitedUntil,
+          deezerHealthy: true,
+        });
         return;
       }
 
@@ -541,7 +702,13 @@ app.get('/api/search', async (req: Request, res: Response) => {
       const tracks = [track];
       searchCache.set(normalizedQuery, tracks);
       res.setHeader('Cache-Control', cacheControlHeader);
-      res.json({ tracks, query: normalizedQuery });
+      res.json({
+        tracks,
+        query: normalizedQuery,
+        source: 'spotify',
+        spotifyHealthy: true,
+        deezerHealthy: true,
+      });
       return;
     }
 
@@ -553,27 +720,62 @@ app.get('/api/search', async (req: Request, res: Response) => {
     searchCache.set(normalizedQuery, tracks);
 
     res.setHeader('Cache-Control', cacheControlHeader);
-    res.json({ tracks, query: normalizedQuery });
+    res.json({
+      tracks,
+      query: normalizedQuery,
+      source: 'spotify',
+      spotifyHealthy: true,
+      deezerHealthy: true,
+    });
   } catch (error) {
-    if (error instanceof SpotifyRateLimitError) {
-      res.setHeader('Retry-After', String(error.retryAfterSeconds));
-      res.status(429).json({
-        error: 'Too many searches right now. Please wait a few seconds and try again.',
-        code: 'RATE_LIMITED',
-        retryAfter: error.retryAfterSeconds,
-      });
-      return;
+    if (shouldFallbackToDeezer(error)) {
+      try {
+        const deezerTracks = await searchDeezerTracks(query, 6);
+        res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
+        res.json({
+          tracks: deezerTracks,
+          query: normalizedQuery,
+          source: 'deezer',
+          spotifyHealthy: false,
+          deezerHealthy: true,
+        });
+        return;
+      } catch (deezerError) {
+        const dzMsg = deezerError instanceof Error ? deezerError.message : 'Unknown Deezer error';
+        console.error('Deezer fallback search error:', dzMsg);
+        if (error instanceof SpotifyRateLimitError) {
+          res.setHeader('Retry-After', String(error.retryAfterSeconds));
+          res.status(429).json({
+            error: 'Too many searches right now. Please wait a few seconds and try again.',
+            code: 'RATE_LIMITED',
+            retryAfter: error.retryAfterSeconds,
+            tracks: [],
+            source: 'spotify',
+            spotifyHealthy: false,
+            deezerHealthy: false,
+          });
+          return;
+        }
+        res.status(502).json({
+          error: 'Unable to search right now. Please try again.',
+          tracks: [],
+          source: 'spotify',
+          spotifyHealthy: false,
+          deezerHealthy: false,
+        });
+        return;
+      }
     }
+
     const message = error instanceof Error ? error.message : 'Unknown error';
-    if (message === 'SPOTIFY_CREDENTIALS_MISSING') {
-      res.status(503).json({
-        error: 'Spotify API credentials are not configured on the server.',
-        code: 'CREDENTIALS_MISSING',
-      });
-      return;
-    }
     console.error('Spotify search error:', message);
-    res.status(502).json({ error: 'Unable to search Spotify right now. Please try again.' });
+    res.status(502).json({
+      error: 'Unable to search Spotify right now. Please try again.',
+      tracks: [],
+      source: 'spotify',
+      spotifyHealthy: false,
+      deezerHealthy: true,
+    });
   }
 });
 
@@ -584,6 +786,8 @@ app.get('/api/track', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Spotify track link or URI is required.' });
     return;
   }
+
+  let resolvedTrackId: string | null = null;
 
   try {
     const resolved = await resolveSpotifyTrackId(input);
@@ -603,11 +807,17 @@ app.get('/api/track', async (req: Request, res: Response) => {
     }
 
     const { trackId } = resolved;
+    resolvedTrackId = trackId;
 
     const cachedTrack = trackCache.get(trackId);
     if (cachedTrack) {
       res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-      res.json({ track: cachedTrack });
+      res.json({
+        track: cachedTrack,
+        source: 'spotify',
+        spotifyHealthy: Date.now() >= spotifyRateLimitedUntil,
+        deezerHealthy: true,
+      });
       return;
     }
 
@@ -615,32 +825,70 @@ app.get('/api/track', async (req: Request, res: Response) => {
     const track = normalizeTrack(rawTrack);
     trackCache.set(trackId, track);
     res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-    res.json({ track });
+    res.json({
+      track,
+      source: 'spotify',
+      spotifyHealthy: true,
+      deezerHealthy: true,
+    });
   } catch (error) {
-    if (error instanceof SpotifyRateLimitError) {
-      res.setHeader('Retry-After', String(error.retryAfterSeconds));
-      res.status(429).json({
-        error: 'Too many searches right now. Please wait a few seconds and try again.',
-        code: 'RATE_LIMITED',
-        retryAfter: error.retryAfterSeconds,
-      });
-      return;
+    if (shouldFallbackToDeezer(error)) {
+      try {
+        const fallbackInput = resolvedTrackId
+          ? `https://open.spotify.com/track/${resolvedTrackId}`
+          : input;
+        const deezerTracks = await searchDeezerTracks(fallbackInput, 1);
+        if (deezerTracks.length > 0) {
+          res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
+          res.json({
+            track: deezerTracks[0],
+            source: 'deezer',
+            spotifyHealthy: false,
+            deezerHealthy: true,
+          });
+          return;
+        }
+      } catch (deezerError) {
+        const dzMsg = deezerError instanceof Error ? deezerError.message : 'Unknown Deezer error';
+        console.error('Deezer fallback track error:', dzMsg);
+        if (error instanceof SpotifyRateLimitError) {
+          res.setHeader('Retry-After', String(error.retryAfterSeconds));
+          res.status(429).json({
+            error: 'Too many searches right now. Please wait a few seconds and try again.',
+            code: 'RATE_LIMITED',
+            retryAfter: error.retryAfterSeconds,
+            spotifyHealthy: false,
+            deezerHealthy: false,
+          });
+          return;
+        }
+      }
+
+      if (error instanceof SpotifyRateLimitError) {
+        res.setHeader('Retry-After', String(error.retryAfterSeconds));
+        res.status(429).json({
+          error: 'Too many searches right now. Please wait a few seconds and try again.',
+          code: 'RATE_LIMITED',
+          retryAfter: error.retryAfterSeconds,
+          spotifyHealthy: false,
+          deezerHealthy: true,
+        });
+        return;
+      }
     }
+
     const errWithStatus = error as Error & { status?: number };
     const message = errWithStatus.message || 'Unknown error';
-    if (message === 'SPOTIFY_CREDENTIALS_MISSING') {
-      res.status(503).json({
-        error: 'Spotify API credentials are not configured on the server.',
-        code: 'CREDENTIALS_MISSING',
-      });
-      return;
-    }
     if (errWithStatus.status === 404) {
       res.status(404).json({ error: 'Track not found on Spotify.' });
       return;
     }
     console.error('Spotify track lookup error:', message);
-    res.status(502).json({ error: 'Could not load that Spotify track. Check the link and try again.' });
+    res.status(502).json({
+      error: 'Could not load that Spotify track. Check the link and try again.',
+      spotifyHealthy: false,
+      deezerHealthy: true,
+    });
   }
 });
 

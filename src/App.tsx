@@ -18,7 +18,13 @@ import { PWAInstallButton } from './components/PWAInstallButton';
 import { SkeletonRows } from './components/SkeletonRows';
 import { TrackRow } from './components/TrackRow';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import type { SearchApiResponse, TrackApiResponse, TrackItem } from './types/track';
+import type {
+  ApiHealthStatus,
+  ApiStatusState,
+  SearchApiResponse,
+  TrackApiResponse,
+  TrackItem,
+} from './types/track';
 import {
   clearRecentTracksStorage,
   formatIsrcCode,
@@ -98,6 +104,68 @@ const TrackListSection = memo(function TrackListSection({
   );
 });
 
+const STATUS_STYLES: Record<
+  ApiHealthStatus,
+  { color: string; glow: string; label: string }
+> = {
+  online: {
+    color: '#30D158',
+    glow: 'rgba(48, 209, 88, 0.55)',
+    label: 'Online',
+  },
+  limited: {
+    color: '#FF9F0A',
+    glow: 'rgba(255, 159, 10, 0.55)',
+    label: 'Limited',
+  },
+  down: {
+    color: '#FF453A',
+    glow: 'rgba(255, 69, 58, 0.55)',
+    label: 'Down',
+  },
+};
+
+const StatusDot = memo(function StatusDot({ color, glow }: { color: string; glow: string }) {
+  return (
+    <span className="relative flex h-2 w-2 shrink-0 items-center justify-center" aria-hidden="true">
+      <span
+        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-70"
+        style={{ backgroundColor: color }}
+      />
+      <span
+        className="relative inline-flex h-2 w-2 rounded-full"
+        style={{
+          backgroundColor: color,
+          boxShadow: `0 0 8px ${glow}`,
+        }}
+      />
+    </span>
+  );
+});
+
+const ApiStatusPill = memo(function ApiStatusPill({ status }: { status: ApiStatusState }) {
+  const spotifyMeta = STATUS_STYLES[status.spotify];
+  const deezerMeta = STATUS_STYLES[status.deezer === 'down' ? 'down' : 'online'];
+
+  return (
+    <div className="flex justify-center pt-1" aria-label="API service status">
+      <div className="inline-flex items-center gap-2.5 rounded-full border border-white/[0.09] bg-white/[0.04] px-3.5 py-1.5 text-[11.5px] leading-none">
+        <span className="inline-flex items-center gap-1.5">
+          <StatusDot color={spotifyMeta.color} glow={spotifyMeta.glow} />
+          <span className="font-medium text-white/85">Spotify</span>
+          <span className="text-[#8E8E93]">{spotifyMeta.label}</span>
+        </span>
+        <span aria-hidden="true" className="h-3 w-[1px] bg-white/10" />
+        <span className="inline-flex items-center gap-1.5">
+          <StatusDot color={deezerMeta.color} glow={deezerMeta.glow} />
+          <span className="font-medium text-white/85">Deezer</span>
+          <span className="text-[#8E8E93]">{deezerMeta.label}</span>
+        </span>
+      </div>
+    </div>
+  );
+});
+
 const FooterDock = memo(function FooterDock() {
   return (
     <footer
@@ -173,6 +241,10 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState<TrackItem | null>(null);
   const [autoCopiedSignal, setAutoCopiedSignal] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [apiStatus, setApiStatus] = useState<ApiStatusState>({
+    spotify: 'online',
+    deezer: 'online',
+  });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -274,7 +346,23 @@ export default function App() {
           const res = await fetch(`/api/track?input=${encodeURIComponent(rawInput)}`, {
             signal: controller.signal,
           });
-          const payload = (await res.json()) as TrackApiResponse & { error?: string };
+          const payload = (await res.json().catch(() => ({}))) as TrackApiResponse & {
+            error?: string;
+          };
+
+          if (
+            typeof payload.spotifyHealthy === 'boolean' ||
+            typeof payload.deezerHealthy === 'boolean' ||
+            payload.source
+          ) {
+            const deezerDown = payload.deezerHealthy === false;
+            const spotifyOnline = payload.spotifyHealthy === true;
+            setApiStatus({
+              spotify: spotifyOnline ? 'online' : deezerDown ? 'down' : 'limited',
+              deezer: deezerDown ? 'down' : 'online',
+            });
+          }
+
           if (!res.ok) {
             if (res.status === 429 || res.status >= 500) {
               setIsRateLimited(true);
@@ -302,16 +390,39 @@ export default function App() {
           const res = await fetch(`/api/search?q=${encodeURIComponent(rawInput)}`, {
             signal: controller.signal,
           });
-          const payload = (await res.json()) as SearchApiResponse & { error?: string };
+          const payload = (await res.json().catch(() => ({}))) as
+            | TrackItem[]
+            | (SearchApiResponse & { error?: string });
+
+          if (!Array.isArray(payload) && (
+            typeof payload.spotifyHealthy === 'boolean' ||
+            typeof payload.deezerHealthy === 'boolean' ||
+            payload.source
+          )) {
+            const deezerDown = payload.deezerHealthy === false;
+            const spotifyOnline = payload.spotifyHealthy === true;
+            setApiStatus({
+              spotify: spotifyOnline ? 'online' : deezerDown ? 'down' : 'limited',
+              deezer: deezerDown ? 'down' : 'online',
+            });
+          }
+
           if (!res.ok) {
             if (res.status === 429 || res.status >= 500) {
               setIsRateLimited(true);
             }
-            throw new Error(payload.error || 'Unable to search Spotify right now.');
+            const errMsg = !Array.isArray(payload) ? payload.error : undefined;
+            throw new Error(errMsg || 'Unable to search Spotify right now.');
           }
 
-          setCachedSearchResults(rawInput, payload.tracks);
-          setResults(payload.tracks);
+          const tracks = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload.tracks)
+              ? payload.tracks
+              : [];
+
+          setCachedSearchResults(rawInput, tracks);
+          setResults(tracks);
           setHasSearched(true);
         }
       } catch (err) {
@@ -909,6 +1020,11 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {/* Live API Health Indicator Pill (shown on both Home & Results views) */}
+            <div className="mt-5">
+              <ApiStatusPill status={apiStatus} />
+            </div>
           </main>
 
         </motion.div>
