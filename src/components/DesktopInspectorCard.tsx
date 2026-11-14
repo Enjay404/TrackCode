@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Copy, Disc3, Search } from 'lucide-react';
+import { Copy, Disc3, Loader2, Search } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
@@ -15,6 +15,7 @@ interface DesktopInspectorCardProps {
   track: TrackItem | null;
   copiedSignal: number;
   isLoadingInitial?: boolean;
+  isFetchingIsrc?: boolean;
   onCopied: (isrc: string, copiedTrack?: TrackItem) => void;
   onCopyFailed?: () => void;
   onSearchOtherVersions: (track: TrackItem) => void;
@@ -27,6 +28,7 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
   track,
   copiedSignal,
   isLoadingInitial = false,
+  isFetchingIsrc = false,
   onCopied,
   onCopyFailed,
   onSearchOtherVersions,
@@ -241,15 +243,22 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
       </div>
 
       {/* Inset Dark-Glass Instagram Search Code + White Pill CTA */}
-      {formattedIsrc ? (
+      {isFetchingIsrc || formattedIsrc ? (
         <div className="relative mt-5 space-y-3">
           <motion.button
             type="button"
+            disabled={isFetchingIsrc}
             onClick={() => void handleManualCopy()}
-            whileTap={{ scale: 0.985 }}
+            whileTap={isFetchingIsrc ? undefined : { scale: 0.985 }}
             transition={SPRING_BUTTON}
-            aria-label={`Copy ${formattedIsrc}`}
-            className="group relative flex w-full cursor-pointer items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 hover:bg-[#323234] active:bg-[#3A3A3C] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+            aria-label={
+              isFetchingIsrc ? 'Fetching ISRC' : formattedIsrc ? `Copy ${formattedIsrc}` : undefined
+            }
+            className={`group relative flex w-full items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25 ${
+              isFetchingIsrc
+                ? 'cursor-wait'
+                : 'cursor-pointer hover:bg-[#323234] active:bg-[#3A3A3C]'
+            }`}
           >
             <motion.div
               key={`desktop-pulse-${pulseCount}`}
@@ -267,86 +276,120 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
               }}
               className="pointer-events-none absolute -inset-[1px] rounded-[14px] border-2 border-[#30D158]/85 shadow-[0_0_12px_rgba(48,209,88,0.16)]"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[11px] font-medium tracking-wide text-[#8E8E93]">
                 Instagram Search Code
               </div>
-              <div className="font-mono-isrc mt-0.5 select-all truncate text-[17px] font-semibold tracking-[0.02em] text-white">
-                {formattedIsrc}
-              </div>
+              {isFetchingIsrc ? (
+                <div className="relative mt-0.5 flex h-7 items-center gap-2.5 overflow-hidden rounded-lg">
+                  <span aria-hidden="true" className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.95)]" />
+                  </span>
+                  <span className="text-[15px] font-medium tracking-[-0.01em] text-white/80">
+                    Fetching ISRC…
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="trackcode-isrc-shimmer pointer-events-none absolute inset-0"
+                  />
+                </div>
+              ) : (
+                <div className="mt-0.5 flex h-7 items-center">
+                  <span className="font-mono-isrc select-all truncate text-[17px] font-semibold tracking-[0.02em] text-white">
+                    {formattedIsrc}
+                  </span>
+                </div>
+              )}
             </div>
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[#8E8E93] transition-colors duration-150 group-hover:text-white">
-              <Copy
-                className={`h-4 w-4 transition-colors duration-150 ${
-                  copiedState ? 'text-[#30D158]' : ''
-                }`}
-              />
+              {isFetchingIsrc ? (
+                <Loader2 className="h-4 w-4 animate-spin text-white/60" />
+              ) : (
+                <Copy
+                  className={`h-4 w-4 transition-colors duration-150 ${
+                    copiedState ? 'text-[#30D158]' : ''
+                  }`}
+                />
+              )}
             </span>
           </motion.button>
 
           <motion.button
             type="button"
+            disabled={isFetchingIsrc}
             onClick={() => void handleManualCopy()}
-            whileTap={{ scale: 0.97 }}
+            whileTap={isFetchingIsrc ? undefined : { scale: 0.97 }}
             transition={SPRING_BUTTON}
-            className={`flex min-h-[50px] w-full cursor-pointer items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none ${
-              copiedState
-                ? 'bg-[#30D158] text-black'
-                : 'bg-white text-black hover:bg-white/95 active:bg-[#2C2C2E] active:text-white'
+            className={`flex min-h-[50px] w-full items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none ${
+              isFetchingIsrc
+                ? 'cursor-wait bg-white text-black opacity-60'
+                : copiedState
+                  ? 'cursor-pointer bg-[#30D158] text-black'
+                  : 'cursor-pointer bg-white text-black hover:bg-white/95 active:bg-[#2C2C2E] active:text-white'
             }`}
           >
-            <AnimatePresence mode="wait" initial={false}>
-              {copiedState ? (
-                <motion.span
-                  key="copied"
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                  transition={{ duration: 0.16, ease: IOS_EASE }}
-                  className="inline-flex items-center justify-center gap-2"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="h-5 w-5 stroke-current"
-                    strokeWidth={2.6}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            {isFetchingIsrc ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin stroke-[2.2]" />
+                <span>Fetching ISRC…</span>
+              </span>
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                {copiedState ? (
+                  <motion.span
+                    key="copied"
+                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                    transition={{ duration: 0.16, ease: IOS_EASE }}
+                    className="inline-flex items-center justify-center gap-2"
                   >
-                    <motion.path
-                      d="M5 13l4 4L19 7"
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 0.22, ease: 'easeOut' }}
-                    />
-                  </svg>
-                  <span>Copied</span>
-                </motion.span>
-              ) : (
-                <motion.span
-                  key="copy"
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                  transition={{ duration: 0.18, ease: IOS_EASE }}
-                  className="inline-flex items-center justify-center gap-2"
-                >
-                  <Copy className="h-4 w-4 stroke-[2.2]" />
-                  <span>Copy ISRC</span>
-                </motion.span>
-              )}
-            </AnimatePresence>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      className="h-5 w-5 stroke-current"
+                      strokeWidth={2.6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <motion.path
+                        d="M5 13l4 4L19 7"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.22, ease: 'easeOut' }}
+                      />
+                    </svg>
+                    <span>Copied</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="copy"
+                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                    transition={{ duration: 0.18, ease: IOS_EASE }}
+                    className="inline-flex items-center justify-center gap-2"
+                  >
+                    <Copy className="h-4 w-4 stroke-[2.2]" />
+                    <span>Copy ISRC</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            )}
           </motion.button>
         </div>
       ) : (
         <div className="relative mt-5 space-y-3">
-          <div className="rounded-[14px] border border-[#FF9F0A]/30 bg-[#FF9F0A]/10 px-4 py-3.5">
-            <p className="text-[14px] font-medium text-[#FF9F0A]">
-              No ISRC available on this upload
-            </p>
-            <p className="mt-1 text-[13px] leading-relaxed text-[#AEAEB2]">
-              No ISRC code was returned for this release. Try another version (single, deluxe, or explicit/clean edit).
-            </p>
+          <div className="rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5">
+            <div className="text-[11px] font-medium tracking-wide text-[#8E8E93]">
+              Instagram Search Code
+            </div>
+            <div className="mt-0.5 flex h-7 items-center">
+              <span className="text-[14px] font-medium text-[#98989D]">
+                ISRC unavailable for this track
+              </span>
+            </div>
           </div>
 
           <button

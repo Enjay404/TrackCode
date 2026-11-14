@@ -198,18 +198,70 @@
   }
 }
 
+.trackcode-isrc-shimmer {
+  transform: translate3d(-100%, 0, 0);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+  animation: trackcode-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes updated-shimmer {
+  0%,
+  65% {
+    background-position: 100% 0;
+  }
+  99.9% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 100% 0;
+  }
+}
+
+.animate-updated-shimmer {
+  display: inline-block;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0.38) 0%,
+    rgba(255, 255, 255, 0.38) 42%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.38) 58%,
+    rgba(255, 255, 255, 0.38) 100%
+  );
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: updated-shimmer 6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton-shimmer::after,
+  .trackcode-isrc-shimmer,
   .animate-ambient-breathe,
   .animate-badge-float,
   .animate-ring-pulse,
   .animate-card-in,
   .animate-sweep-enter,
-  .animate-sweep-tap {
+  .animate-sweep-tap,
+  .animate-updated-shimmer {
     animation: none;
   }
 
+  .animate-updated-shimmer {
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    color: rgba(255, 255, 255, 0.38);
+  }
+
   .trackcode-light-beam,
+  .trackcode-isrc-shimmer,
   .group:hover .trackcode-sweep-hover {
     display: none;
     transition: none;

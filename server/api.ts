@@ -239,6 +239,7 @@ function normalizeTrack(raw: SpotifyRawTrack): TrackItem {
     },
     isrc: cleanIsrc,
     spotifyUrl: raw.external_urls?.spotify || `https://open.spotify.com/track/${raw.id}`,
+    source: 'spotify',
   };
 }
 
@@ -294,6 +295,7 @@ function normalizeDeezerTrack(detail: DeezerTrackDetail): TrackItem {
     },
     isrc: cleanIsrc,
     spotifyUrl: detail.link || `https://www.deezer.com/track/${detail.id}`,
+    source: 'deezer',
   };
 }
 
@@ -365,7 +367,11 @@ async function extractTitleFromSpotifyOembed(rawQuery: string): Promise<string |
   return oembedTitle;
 }
 
-async function searchDeezerTracks(rawQuery: string, limit = 6): Promise<TrackItem[]> {
+async function searchDeezerTracks(
+  rawQuery: string,
+  limit = 8,
+  hydrateDetails = false
+): Promise<TrackItem[]> {
   let effectiveQuery = rawQuery.trim();
   if (/spotify\.com\/|spotify:|^[A-Za-z0-9]{22}$/i.test(effectiveQuery)) {
     const oembedQuery = await extractTitleFromSpotifyOembed(effectiveQuery);
@@ -392,6 +398,10 @@ async function searchDeezerTracks(rawQuery: string, limit = 6): Promise<TrackIte
 
   const items = Array.isArray(searchJson.data) ? searchJson.data.slice(0, limit) : [];
   if (items.length === 0) return [];
+
+  if (!hydrateDetails) {
+    return items.map((item) => normalizeDeezerTrack(item));
+  }
 
   const detailed = await Promise.all(
     items.map(async (item) => {
@@ -577,6 +587,7 @@ app.use(express.json());
 const searchCache = new BoundedTtlCache<TrackItem[]>(250, 15 * 60 * 1000);
 const deezerSearchCache = new BoundedTtlCache<TrackItem[]>(150, 5 * 60 * 1000);
 const trackCache = new BoundedTtlCache<TrackItem>(300, 60 * 60 * 1000);
+const isrcCache = new BoundedTtlCache<{ isrc: string | null }>(500, 24 * 60 * 60 * 1000);
 
 interface SearchExecutionResult {
   status: number;
@@ -874,6 +885,87 @@ app.get('/api/quick-try', async (_req: Request, res: Response) => {
   res.json({ tracks, updatedAt: getUtcDateKey() });
 });
 
+export async function resolveTrackIsrc(
+  rawId: string,
+  rawSource = 'deezer'
+): Promise<string | null> {
+  const trimmedId = rawId.trim();
+  if (!trimmedId) return null;
+
+  const source: 'deezer' | 'spotify' =
+    rawSource.toLowerCase() === 'spotify' && !trimmedId.startsWith('dz-')
+      ? 'spotify'
+      : 'deezer';
+
+  const cacheKey = `${source}:${trimmedId}`;
+  const cached = isrcCache.get(cacheKey);
+  if (cached) {
+    return cached.isrc;
+  }
+
+  if (source === 'deezer') {
+    const cleanId = trimmedId.replace(/^dz-/i, '');
+    if (!/^\d+$/.test(cleanId)) {
+      return null;
+    }
+
+    try {
+      const detailRes = await fetch(`https://api.deezer.com/track/${cleanId}`, {
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!detailRes.ok) {
+        return null;
+      }
+      const detail = (await detailRes.json()) as DeezerTrackDetail & { error?: unknown };
+      if (!detail || detail.error) {
+        return null;
+      }
+      const rawIsrc = detail.isrc?.trim().toUpperCase();
+      const cleanIsrc = rawIsrc && /^[A-Z0-9]{12}$/.test(rawIsrc) ? rawIsrc : rawIsrc || null;
+      isrcCache.set(cacheKey, { isrc: cleanIsrc });
+      return cleanIsrc;
+    } catch {
+      return null;
+    }
+  }
+
+  const cachedTrack = trackCache.get(trimmedId);
+  if (cachedTrack) {
+    isrcCache.set(cacheKey, { isrc: cachedTrack.isrc });
+    return cachedTrack.isrc;
+  }
+
+  if (!/^[A-Za-z0-9]{22}$/.test(trimmedId)) {
+    return null;
+  }
+
+  try {
+    const rawTrack = await spotifyGet<SpotifyRawTrack>(
+      `https://api.spotify.com/v1/tracks/${trimmedId}`
+    );
+    const track = normalizeTrack(rawTrack);
+    trackCache.set(trimmedId, track);
+    isrcCache.set(cacheKey, { isrc: track.isrc });
+    return track.isrc;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/isrc', async (req: Request, res: Response) => {
+  const id = typeof req.query.id === 'string' ? req.query.id.trim() : '';
+  const source = typeof req.query.source === 'string' ? req.query.source.trim() : 'deezer';
+
+  if (!id) {
+    res.status(400).json({ error: 'Track id is required.', isrc: null });
+    return;
+  }
+
+  const isrc = await resolveTrackIsrc(id, source);
+  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+  res.json({ isrc });
+});
+
 async function executeSearchQuery(
   query: string,
   normalizedQuery: string,
@@ -955,7 +1047,7 @@ async function executeSearchQuery(
       }
 
       try {
-        const deezerTracks = await searchDeezerTracks(query, 6);
+        const deezerTracks = await searchDeezerTracks(query, 8, false);
         if (deezerTracks.length > 0) {
           deezerSearchCache.set(normalizedQuery, deezerTracks);
         }
@@ -1121,7 +1213,7 @@ app.get('/api/track', async (req: Request, res: Response) => {
         const fallbackInput = resolvedTrackId
           ? `https://open.spotify.com/track/${resolvedTrackId}`
           : input;
-        const deezerTracks = await searchDeezerTracks(fallbackInput, 1);
+        const deezerTracks = await searchDeezerTracks(fallbackInput, 1, true);
         if (deezerTracks.length > 0) {
           res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
           res.json({

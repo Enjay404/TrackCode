@@ -6,7 +6,7 @@ import {
   ALBUM_TYPE_LABEL,
   EXPLICIT_BADGE_STYLE,
 } from '../utils/badgeStyles';
-import { copyIsrcVerified } from '../utils/spotifyInput';
+import { copyIsrcVerified, getCachedTrackIsrc } from '../utils/spotifyInput';
 
 interface TrackRowProps {
   track: TrackItem;
@@ -30,14 +30,15 @@ export const TrackRow = memo(function TrackRow({
 
   const handleTap = async () => {
     setTapSweepCount((prev) => prev + 1);
+    const knownIsrc = track.isrc ?? getCachedTrackIsrc(track.id) ?? null;
     let copied = false;
-    if (track.isrc) {
-      copied = await copyIsrcVerified(track.isrc);
+    if (knownIsrc) {
+      copied = await copyIsrcVerified(knownIsrc);
       if (copied && typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(10);
       }
     }
-    onSelect(track, copied);
+    onSelect(knownIsrc && !track.isrc ? { ...track, isrc: knownIsrc } : track, copied);
   };
 
   const entranceDelayMs = Math.min(index, 12) * 45;
@@ -49,7 +50,7 @@ export const TrackRow = memo(function TrackRow({
       data-track-id={track.id}
       aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
-      className={`group relative flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
+      className={`group relative flex min-h-[70px] w-full touch-pan-y cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
         isSelected
           ? 'border-white/[0.18] border-t-white/[0.32] bg-gradient-to-b from-[#262629] to-[#18181B] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_8px_24px_rgba(0,0,0,0.45)]'
           : 'border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] hover:border-t-white/[0.24] active:border-t-white/[0.24]'

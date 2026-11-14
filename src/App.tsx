@@ -41,12 +41,15 @@ import {
   copyIsrcVerified,
   formatIsrcCode,
   getCachedSearchResult,
+  getCachedTrackIsrc,
+  hydrateTracksWithCachedIsrc,
   isSpotifyTrackLink,
   loadCachedQuickTryTracks,
   loadRecentTracks,
   saveCachedQuickTryTracks,
   saveRecentTrack,
   setCachedSearchResult,
+  setCachedTrackIsrc,
   syncQuickTryChartHistory,
 } from './utils/spotifyInput';
 
@@ -117,16 +120,12 @@ const TrackListSection = memo(function TrackListSection({
             Clear
           </button>
         ) : subtitle ? (
-          <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-white/35">
-            <span>{subtitle}</span>
-            <span aria-hidden="true" className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-white shadow-[0_0_8px_rgba(255,255,255,0.95),0_0_14px_rgba(255,255,255,0.55)]" />
-            </span>
+          <span className="animate-updated-shimmer shrink-0 text-[10.5px] font-medium uppercase tracking-wider">
+            {subtitle}
           </span>
         ) : null}
       </div>
-      <div className="space-y-2">
+      <div className="touch-pan-y space-y-2">
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
@@ -249,6 +248,7 @@ function TrackCodeWorkspace() {
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
   const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
   const [inspectedTrack, setInspectedTrack] = useState<TrackItem | null>(null);
+  const [fetchingIsrcTrackId, setFetchingIsrcTrackId] = useState<string | null>(null);
   const [autoCopiedSignal, setAutoCopiedSignal] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatusState>({
@@ -259,6 +259,8 @@ function TrackCodeWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isrcAbortControllerRef = useRef<AbortController | null>(null);
+  const fetchingTrackIdRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
   const isDesktopRef = useRef(isDesktop);
@@ -356,6 +358,9 @@ function TrackCodeWorkspace() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (isrcAbortControllerRef.current) {
+        isrcAbortControllerRef.current.abort();
+      }
     };
   }, []);
 
@@ -449,9 +454,10 @@ function TrackCodeWorkspace() {
           if (nextStatus) {
             setApiStatus(nextStatus);
           }
-          setResults(cached.tracks);
-          if (cached.tracks.length > 0) {
-            setInspectedTrack(cached.tracks[0]);
+          const hydratedTracks = hydrateTracksWithCachedIsrc(cached.tracks);
+          setResults(hydratedTracks);
+          if (hydratedTracks.length > 0) {
+            setInspectedTrack(hydratedTracks[0]);
           }
           setErrorMessage(null);
           setIsRateLimited(false);
@@ -502,6 +508,7 @@ function TrackCodeWorkspace() {
           }
 
           if (track.isrc) {
+            setCachedTrackIsrc(track.id, track.isrc);
             const copied = await copyIsrcVerified(track.isrc);
             setRecentTracks(saveRecentTrack(track));
             if (copied) {
@@ -538,11 +545,12 @@ function TrackCodeWorkspace() {
             throw new Error(meta.error || 'Unable to search right now.');
           }
 
-          const tracks = Array.isArray(payload)
+          const rawTracks = Array.isArray(payload)
             ? payload
             : Array.isArray(payload.tracks)
               ? payload.tracks
               : [];
+          const tracks = hydrateTracksWithCachedIsrc(rawTracks);
 
           setCachedSearchResult(rawInput, {
             tracks,
@@ -620,9 +628,10 @@ function TrackCodeWorkspace() {
       if (nextStatus) {
         setApiStatus(nextStatus);
       }
-      setResults(cached.tracks);
-      if (cached.tracks.length > 0) {
-        setInspectedTrack(cached.tracks[0]);
+      const hydratedTracks = hydrateTracksWithCachedIsrc(cached.tracks);
+      setResults(hydratedTracks);
+      if (hydratedTracks.length > 0) {
+        setInspectedTrack(hydratedTracks[0]);
         setAutoCopiedSignal(0);
       }
       setIsLoading(false);
@@ -660,26 +669,117 @@ function TrackCodeWorkspace() {
     };
   }, [trimmedQuery, isLinkMode, executeLookup]);
 
+  const fetchIsrcOnDemand = useCallback((targetTrack: TrackItem) => {
+    if (targetTrack.isrc) return;
+
+    const cachedIsrc = getCachedTrackIsrc(targetTrack.id);
+    if (cachedIsrc !== undefined) {
+      if (cachedIsrc) {
+        const patchTrack = (item: TrackItem) =>
+          item.id === targetTrack.id ? { ...item, isrc: cachedIsrc } : item;
+        setResults((prev) => prev.map(patchTrack));
+        setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
+        setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+      }
+      return;
+    }
+
+    if (fetchingTrackIdRef.current === targetTrack.id) {
+      return;
+    }
+
+    if (isrcAbortControllerRef.current) {
+      isrcAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    isrcAbortControllerRef.current = controller;
+    fetchingTrackIdRef.current = targetTrack.id;
+    setFetchingIsrcTrackId(targetTrack.id);
+
+    const source =
+      targetTrack.source ?? (targetTrack.id.startsWith('dz-') ? 'deezer' : 'spotify');
+
+    void fetch(
+      `/api/isrc?id=${encodeURIComponent(targetTrack.id)}&source=${encodeURIComponent(source)}`,
+      { signal: controller.signal }
+    )
+      .then((res) => (res.ok ? (res.json() as Promise<{ isrc?: string | null }>) : { isrc: null }))
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const resolvedIsrc =
+          typeof data.isrc === 'string' && data.isrc.trim()
+            ? data.isrc.trim().toUpperCase()
+            : null;
+
+        setCachedTrackIsrc(targetTrack.id, resolvedIsrc);
+        const patchTrack = (item: TrackItem) =>
+          item.id === targetTrack.id ? { ...item, isrc: resolvedIsrc } : item;
+
+        setResults((prev) => prev.map(patchTrack));
+        setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
+        setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+
+        if (resolvedIsrc) {
+          setRecentTracks(saveRecentTrack({ ...targetTrack, isrc: resolvedIsrc }));
+        }
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+      })
+      .finally(() => {
+        if (fetchingTrackIdRef.current === targetTrack.id) {
+          fetchingTrackIdRef.current = null;
+        }
+        if (!controller.signal.aborted) {
+          setFetchingIsrcTrackId((curr) => (curr === targetTrack.id ? null : curr));
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    const activeTrack = isDesktop ? activeDesktopTrack : sheetTrack;
+    if (!activeTrack || activeTrack.isrc) return;
+    if (getCachedTrackIsrc(activeTrack.id) !== undefined) return;
+    fetchIsrcOnDemand(activeTrack);
+  }, [isDesktop, activeDesktopTrack, sheetTrack, fetchIsrcOnDemand]);
+
   const handleSelectTrack = useCallback(
     (track: TrackItem, copied: boolean) => {
+      const cachedIsrc = track.isrc ?? getCachedTrackIsrc(track.id);
+      const effectiveTrack =
+        typeof cachedIsrc === 'string' && cachedIsrc && !track.isrc
+          ? { ...track, isrc: cachedIsrc }
+          : track;
+
       if (!isDesktopRef.current) {
         (document.activeElement as HTMLElement | null)?.blur();
-        setSheetTrack(track);
+        setSheetTrack(effectiveTrack);
       }
-      setInspectedTrack(track);
-      if (track.isrc) {
-        setRecentTracks(saveRecentTrack(track));
+      setInspectedTrack(effectiveTrack);
+
+      if (effectiveTrack.isrc) {
+        if (isrcAbortControllerRef.current) {
+          isrcAbortControllerRef.current.abort();
+        }
+        fetchingTrackIdRef.current = null;
+        setFetchingIsrcTrackId(null);
+        setRecentTracks(saveRecentTrack(effectiveTrack));
         if (copied) {
           setAutoCopiedSignal((s) => s + 1);
-          showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
+          showToast(`Copied ${formatIsrcCode(effectiveTrack.isrc)}`, 'success');
         } else {
           setAutoCopiedSignal(0);
         }
       } else {
         setAutoCopiedSignal(0);
+        if (cachedIsrc === undefined) {
+          fetchIsrcOnDemand(effectiveTrack);
+        }
       }
     },
-    [showToast]
+    [showToast, fetchIsrcOnDemand]
   );
 
   const handlePasteFromClipboard = useCallback(async () => {
@@ -987,7 +1087,7 @@ function TrackCodeWorkspace() {
               <div className="px-4 pt-2 lg:px-0 lg:pt-0">
                 {trimmedQuery ? (
                   <>
-                    {isLoading && <SkeletonRows count={6} />}
+                    {isLoading && <SkeletonRows count={4} />}
 
                     {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
                       <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
@@ -1093,7 +1193,7 @@ function TrackCodeWorkspace() {
                             ↑↓ navigate · Enter copy
                           </span>
                         </div>
-                        <div className="space-y-2">
+                        <div className="touch-pan-y space-y-2">
                           {results.map((track, index) => (
                             <TrackRow
                               key={track.id}
@@ -1174,6 +1274,10 @@ function TrackCodeWorkspace() {
                 track={activeDesktopTrack}
                 copiedSignal={autoCopiedSignal}
                 isLoadingInitial={isQuickTryLoading}
+                isFetchingIsrc={
+                  Boolean(activeDesktopTrack?.id) &&
+                  fetchingIsrcTrackId === activeDesktopTrack?.id
+                }
                 onCopied={handleInspectorCopied}
                 onCopyFailed={handleInspectorCopyFailed}
                 onSearchOtherVersions={handleSearchOtherVersions}
@@ -1200,6 +1304,9 @@ function TrackCodeWorkspace() {
           <BottomSheet
             track={isDesktop ? null : sheetTrack}
             autoCopiedSignal={autoCopiedSignal}
+            isFetchingIsrc={
+              Boolean(sheetTrack?.id) && fetchingIsrcTrackId === sheetTrack?.id
+            }
             onClose={handleCloseSheet}
             onCopied={handleInspectorCopied}
             onCopyFailed={handleInspectorCopyFailed}

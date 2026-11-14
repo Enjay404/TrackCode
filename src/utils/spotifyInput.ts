@@ -5,11 +5,14 @@ const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
 const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v2';
 const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v3';
 const CHART_HISTORY_STORAGE_KEY = 'trackcode_chart_history_v1';
+const ISRC_CACHE_STORAGE_KEY = 'trackcode_isrc_cache_v1';
 const MAX_RECENT_TRACKS = 8;
 const MAX_SEARCH_CACHE_ENTRIES = 40;
+const MAX_ISRC_CACHE_ENTRIES = 120;
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 
 const searchMemoryCache = new Map<string, CachedSearchResult>();
+const trackIsrcMemoryCache = new Map<string, string | null>();
 
 export function formatIsrcCode(isrc: string): string {
   return `ISRC:${isrc.trim().toUpperCase()}`;
@@ -131,6 +134,65 @@ export function setCachedSearchResult(
   } catch {
     // Ignore storage quota errors
   }
+}
+
+export function getCachedTrackIsrc(trackId: string): string | null | undefined {
+  if (!trackId) return undefined;
+  if (trackIsrcMemoryCache.has(trackId)) {
+    return trackIsrcMemoryCache.get(trackId);
+  }
+  try {
+    const raw = sessionStorage.getItem(ISRC_CACHE_STORAGE_KEY);
+    if (!raw) return undefined;
+    const stored = JSON.parse(raw) as Record<string, string | null>;
+    if (stored && Object.prototype.hasOwnProperty.call(stored, trackId)) {
+      const value = stored[trackId] ?? null;
+      trackIsrcMemoryCache.set(trackId, value);
+      return value;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return undefined;
+}
+
+export function setCachedTrackIsrc(trackId: string, isrc: string | null): void {
+  if (!trackId) return;
+  const normalized = isrc ? isrc.trim().toUpperCase() : null;
+
+  if (trackIsrcMemoryCache.size >= MAX_ISRC_CACHE_ENTRIES && !trackIsrcMemoryCache.has(trackId)) {
+    const oldest = trackIsrcMemoryCache.keys().next().value;
+    if (oldest !== undefined) {
+      trackIsrcMemoryCache.delete(oldest);
+    }
+  }
+  trackIsrcMemoryCache.set(trackId, normalized);
+
+  try {
+    const raw = sessionStorage.getItem(ISRC_CACHE_STORAGE_KEY);
+    const stored: Record<string, string | null> = raw
+      ? (JSON.parse(raw) as Record<string, string | null>)
+      : {};
+    stored[trackId] = normalized;
+    const keys = Object.keys(stored);
+    if (keys.length > MAX_ISRC_CACHE_ENTRIES) {
+      keys.slice(0, keys.length - MAX_ISRC_CACHE_ENTRIES).forEach((k) => delete stored[k]);
+    }
+    sessionStorage.setItem(ISRC_CACHE_STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function hydrateTracksWithCachedIsrc(tracks: TrackItem[]): TrackItem[] {
+  return tracks.map((track) => {
+    if (track.isrc) return track;
+    const cached = getCachedTrackIsrc(track.id);
+    if (typeof cached === 'string' && cached) {
+      return { ...track, isrc: cached };
+    }
+    return track;
+  });
 }
 
 export function loadCachedQuickTryTracks(): TrackItem[] {
