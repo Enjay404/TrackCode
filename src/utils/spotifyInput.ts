@@ -10,9 +10,15 @@ const MAX_RECENT_TRACKS = 8;
 const MAX_SEARCH_CACHE_ENTRIES = 40;
 const MAX_ISRC_CACHE_ENTRIES = 120;
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+const PREVIEW_CACHE_TTL_MS = 15 * 60 * 1000;
+const MAX_PREVIEW_CACHE_ENTRIES = 120;
 
 const searchMemoryCache = new Map<string, CachedSearchResult>();
 const trackIsrcMemoryCache = new Map<string, string | null>();
+const trackPreviewMemoryCache = new Map<
+  string,
+  { previewUrl: string | null; expiresAt: number }
+>();
 
 export function formatIsrcCode(isrc: string): string {
   return `ISRC:${isrc.trim().toUpperCase()}`;
@@ -184,6 +190,44 @@ export function setCachedTrackIsrc(trackId: string, isrc: string | null): void {
   }
 }
 
+export function getTrackPreviewCacheKey(track: Pick<TrackItem, 'id' | 'isrc'>): string {
+  return `${track.id}:${track.isrc?.trim().toUpperCase() ?? ''}`;
+}
+
+export function getCachedTrackPreview(cacheKey: string): string | null | undefined {
+  if (!cacheKey) return undefined;
+  const entry = trackPreviewMemoryCache.get(cacheKey);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    trackPreviewMemoryCache.delete(cacheKey);
+    return undefined;
+  }
+  return entry.previewUrl;
+}
+
+export function setCachedTrackPreview(cacheKey: string, previewUrl: string | null): void {
+  if (!cacheKey) return;
+  const normalized =
+    typeof previewUrl === 'string' && /^https?:\/\//i.test(previewUrl.trim())
+      ? previewUrl.trim()
+      : null;
+
+  if (
+    trackPreviewMemoryCache.size >= MAX_PREVIEW_CACHE_ENTRIES &&
+    !trackPreviewMemoryCache.has(cacheKey)
+  ) {
+    const oldest = trackPreviewMemoryCache.keys().next().value;
+    if (oldest !== undefined) {
+      trackPreviewMemoryCache.delete(oldest);
+    }
+  }
+
+  trackPreviewMemoryCache.set(cacheKey, {
+    previewUrl: normalized,
+    expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS,
+  });
+}
+
 export function hydrateTracksWithCachedIsrc(tracks: TrackItem[]): TrackItem[] {
   return tracks.map((track) => {
     if (track.isrc) return track;
@@ -293,7 +337,22 @@ export function loadRecentTracks(): TrackItem[] {
 
 export function saveRecentTrack(track: TrackItem): TrackItem[] {
   const existing = loadRecentTracks();
-  const deduped = [track, ...existing.filter((item) => item.id !== track.id)].slice(
+  // Ensure transient preview URLs are never persisted to localStorage
+  const cleanTrack: TrackItem = {
+    id: track.id,
+    name: track.name,
+    artists: track.artists,
+    primaryArtist: track.primaryArtist,
+    albumName: track.albumName,
+    albumType: track.albumType,
+    releaseYear: track.releaseYear,
+    explicit: track.explicit,
+    albumArt: track.albumArt,
+    isrc: track.isrc,
+    spotifyUrl: track.spotifyUrl,
+    ...(track.source ? { source: track.source } : {}),
+  };
+  const deduped = [cleanTrack, ...existing.filter((item) => item.id !== cleanTrack.id)].slice(
     0,
     MAX_RECENT_TRACKS
   );

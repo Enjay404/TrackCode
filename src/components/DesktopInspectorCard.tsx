@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Copy, Disc3, Loader2, Search } from 'lucide-react';
+import { Copy, Disc3, Loader2, Pause, Play, Search } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
@@ -11,11 +11,19 @@ import { extractDominantColorRgb } from '../utils/dominantColor';
 import { IOS_EASE, SPRING_BUTTON } from '../utils/motionConfig';
 import { copyIsrcVerified, formatIsrcCode } from '../utils/spotifyInput';
 
+const PREVIEW_RING_RADIUS = 18.9;
+const PREVIEW_RING_CIRCUMFERENCE = 2 * Math.PI * PREVIEW_RING_RADIUS;
+
 interface DesktopInspectorCardProps {
   track: TrackItem | null;
   copiedSignal: number;
   isLoadingInitial?: boolean;
   isFetchingIsrc?: boolean;
+  previewUrl?: string | null;
+  isAudioPlaying?: boolean;
+  isAudioLoading?: boolean;
+  audioProgress?: number;
+  onTogglePreview?: () => void;
   onCopied: (isrc: string, copiedTrack?: TrackItem) => void;
   onCopyFailed?: () => void;
   onSearchOtherVersions: (track: TrackItem) => void;
@@ -29,6 +37,11 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
   copiedSignal,
   isLoadingInitial = false,
   isFetchingIsrc = false,
+  previewUrl = null,
+  isAudioPlaying = false,
+  isAudioLoading = false,
+  audioProgress = 0,
+  onTogglePreview,
   onCopied,
   onCopyFailed,
   onSearchOtherVersions,
@@ -182,6 +195,55 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
             <div className="flex h-full w-full items-center justify-center text-[#8E8E93]">
               <Disc3 className="h-9 w-9" />
             </div>
+          )}
+
+          {previewUrl && onTogglePreview && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePreview();
+              }}
+              aria-label={isAudioPlaying ? 'Pause preview' : 'Play 30-second preview'}
+              className="absolute left-1/2 top-1/2 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_4px_16px_rgba(0,0,0,0.75)] transition-transform duration-150 hover:scale-105 hover:bg-black/85 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              <svg
+                viewBox="0 0 40 40"
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 h-full w-full -rotate-90"
+              >
+                <circle
+                  cx="20"
+                  cy="20"
+                  r={PREVIEW_RING_RADIUS}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.18)"
+                  strokeWidth="2.2"
+                />
+                {(isAudioPlaying || audioProgress > 0) && (
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r={PREVIEW_RING_RADIUS}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeDasharray={PREVIEW_RING_CIRCUMFERENCE}
+                    strokeDashoffset={
+                      PREVIEW_RING_CIRCUMFERENCE * (1 - Math.min(1, Math.max(0, audioProgress)))
+                    }
+                  />
+                )}
+              </svg>
+              {isAudioLoading ? (
+                <Loader2 className="relative h-4 w-4 animate-spin text-white" />
+              ) : isAudioPlaying ? (
+                <Pause className="relative h-4 w-4 fill-white text-white" />
+              ) : (
+                <Play className="relative ml-0.5 h-4 w-4 fill-white text-white" />
+              )}
+            </button>
           )}
         </div>
 

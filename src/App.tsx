@@ -48,6 +48,8 @@ import {
   formatIsrcCode,
   getCachedSearchResult,
   getCachedTrackIsrc,
+  getCachedTrackPreview,
+  getTrackPreviewCacheKey,
   hydrateTracksWithCachedIsrc,
   isSpotifyTrackLink,
   loadCachedQuickTryCharts,
@@ -56,6 +58,7 @@ import {
   saveRecentTrack,
   setCachedSearchResult,
   setCachedTrackIsrc,
+  setCachedTrackPreview,
   syncQuickTryChartHistory,
 } from './utils/spotifyInput';
 
@@ -330,6 +333,12 @@ function TrackCodeWorkspace() {
   const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
   const [inspectedTrack, setInspectedTrack] = useState<TrackItem | null>(null);
   const [fetchingIsrcTrackId, setFetchingIsrcTrackId] = useState<string | null>(null);
+  const [activePreview, setActivePreview] = useState<{ key: string; url: string | null } | null>(
+    null
+  );
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
   const [autoCopiedSignal, setAutoCopiedSignal] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatusState>({
@@ -344,6 +353,8 @@ function TrackCodeWorkspace() {
   const fetchingTrackIdRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const loadedAudioSrcRef = useRef<string | null>(null);
   const isDesktopRef = useRef(isDesktop);
   isDesktopRef.current = isDesktop;
 
@@ -450,6 +461,14 @@ function TrackCodeWorkspace() {
       if (isrcAbortControllerRef.current) {
         isrcAbortControllerRef.current.abort();
       }
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+        audioRef.current = null;
+      }
+      loadedAudioSrcRef.current = null;
     };
   }, []);
 
@@ -758,18 +777,112 @@ function TrackCodeWorkspace() {
     };
   }, [trimmedQuery, isLinkMode, executeLookup]);
 
-  const fetchIsrcOnDemand = useCallback((targetTrack: TrackItem) => {
-    if (targetTrack.isrc) return;
+  const activeInspectTrack = isDesktop ? activeDesktopTrack : sheetTrack;
+  const activePreviewKey = activeInspectTrack ? getTrackPreviewCacheKey(activeInspectTrack) : null;
+  const activePreviewUrl = activePreviewKey
+    ? activePreview?.key === activePreviewKey
+      ? activePreview.url
+      : (getCachedTrackPreview(activePreviewKey) ?? null)
+    : null;
 
-    const cachedIsrc = getCachedTrackIsrc(targetTrack.id);
-    if (cachedIsrc !== undefined) {
-      if (cachedIsrc) {
-        const patchTrack = (item: TrackItem) =>
-          item.id === targetTrack.id ? { ...item, isrc: cachedIsrc } : item;
-        setResults((prev) => prev.map(patchTrack));
-        setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
-        setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+  const stopAndResetAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
+    loadedAudioSrcRef.current = null;
+    setIsAudioPlaying(false);
+    setIsAudioLoading(false);
+    setAudioProgress(0);
+  }, []);
+
+  const activePlaybackScopeKey = isDesktop
+    ? (activeDesktopTrack?.id ?? null)
+    : (sheetTrack?.id ?? null);
+
+  useEffect(() => {
+    stopAndResetAudio();
+  }, [activePlaybackScopeKey, stopAndResetAudio]);
+
+  const getOrCreateAudio = useCallback(() => {
+    if (audioRef.current) return audioRef.current;
+    const audio = new Audio();
+    audio.preload = 'none';
+    audio.addEventListener('timeupdate', () => {
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 30;
+      setAudioProgress(Math.min(1, Math.max(0, audio.currentTime / duration)));
+    });
+    audio.addEventListener('playing', () => {
+      setIsAudioLoading(false);
+      setIsAudioPlaying(true);
+    });
+    audio.addEventListener('pause', () => {
+      setIsAudioPlaying(false);
+    });
+    audio.addEventListener('ended', () => {
+      setIsAudioPlaying(false);
+      setIsAudioLoading(false);
+      setAudioProgress(0);
+    });
+    audio.addEventListener('error', () => {
+      setIsAudioPlaying(false);
+      setIsAudioLoading(false);
+      setAudioProgress(0);
+    });
+    audioRef.current = audio;
+    return audio;
+  }, []);
+
+  const handleTogglePreview = useCallback(() => {
+    if (!activePreviewUrl) return;
+    const audio = getOrCreateAudio();
+
+    if (isAudioPlaying || isAudioLoading) {
+      audio.pause();
+      setIsAudioPlaying(false);
+      setIsAudioLoading(false);
+      return;
+    }
+
+    if (loadedAudioSrcRef.current !== activePreviewUrl || !audio.getAttribute('src')) {
+      audio.src = activePreviewUrl;
+      loadedAudioSrcRef.current = activePreviewUrl;
+      setAudioProgress(0);
+    }
+
+    setIsAudioLoading(true);
+    void audio.play().catch((err) => {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
       }
+      setIsAudioPlaying(false);
+      setIsAudioLoading(false);
+    });
+  }, [activePreviewUrl, getOrCreateAudio, isAudioLoading, isAudioPlaying]);
+
+  const fetchIsrcOnDemand = useCallback((targetTrack: TrackItem) => {
+    const previewKey = getTrackPreviewCacheKey(targetTrack);
+    const cachedIsrc = targetTrack.isrc ?? getCachedTrackIsrc(targetTrack.id);
+    const needsIsrc = !targetTrack.isrc && cachedIsrc === undefined;
+    const cachedPreview = getCachedTrackPreview(previewKey);
+    const needsPreview = cachedPreview === undefined;
+
+    if (!targetTrack.isrc && typeof cachedIsrc === 'string' && cachedIsrc) {
+      const patchTrack = (item: TrackItem) =>
+        item.id === targetTrack.id ? { ...item, isrc: cachedIsrc } : item;
+      setResults((prev) => prev.map(patchTrack));
+      setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
+      setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+    }
+
+    if (!needsPreview) {
+      setActivePreview({ key: previewKey, url: cachedPreview ?? null });
+    }
+
+    if (!needsIsrc && !needsPreview) {
       return;
     }
 
@@ -783,33 +896,68 @@ function TrackCodeWorkspace() {
     const controller = new AbortController();
     isrcAbortControllerRef.current = controller;
     fetchingTrackIdRef.current = targetTrack.id;
-    setFetchingIsrcTrackId(targetTrack.id);
+    if (needsIsrc) {
+      setFetchingIsrcTrackId(targetTrack.id);
+    } else {
+      setFetchingIsrcTrackId(null);
+    }
 
     const source =
       targetTrack.source ?? (targetTrack.id.startsWith('dz-') ? 'deezer' : 'spotify');
+    const params = new URLSearchParams();
+    params.set('id', targetTrack.id);
+    params.set('source', source);
+    if (typeof cachedIsrc === 'string' && cachedIsrc) {
+      params.set('isrc', cachedIsrc);
+    }
+    const fallbackQuery = `${targetTrack.name} ${targetTrack.primaryArtist}`.trim();
+    if (fallbackQuery) {
+      params.set('q', fallbackQuery);
+    }
 
-    void fetch(
-      `/api/isrc?id=${encodeURIComponent(targetTrack.id)}&source=${encodeURIComponent(source)}`,
-      { signal: controller.signal }
-    )
-      .then((res) => (res.ok ? (res.json() as Promise<{ isrc?: string | null }>) : { isrc: null }))
+    void fetch(`/api/isrc?${params.toString()}`, { signal: controller.signal })
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<{ isrc?: string | null; previewUrl?: string | null }>)
+          : { isrc: null, previewUrl: null }
+      )
       .then((data) => {
         if (controller.signal.aborted) return;
         const resolvedIsrc =
           typeof data.isrc === 'string' && data.isrc.trim()
             ? data.isrc.trim().toUpperCase()
             : null;
+        const resolvedPreviewUrl =
+          typeof data.previewUrl === 'string' && /^https?:\/\//i.test(data.previewUrl.trim())
+            ? data.previewUrl.trim()
+            : null;
 
-        setCachedTrackIsrc(targetTrack.id, resolvedIsrc);
-        const patchTrack = (item: TrackItem) =>
-          item.id === targetTrack.id ? { ...item, isrc: resolvedIsrc } : item;
-
-        setResults((prev) => prev.map(patchTrack));
-        setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
-        setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
-
+        setCachedTrackPreview(previewKey, resolvedPreviewUrl);
         if (resolvedIsrc) {
-          setRecentTracks(saveRecentTrack({ ...targetTrack, isrc: resolvedIsrc }));
+          setCachedTrackPreview(
+            getTrackPreviewCacheKey({ id: targetTrack.id, isrc: resolvedIsrc }),
+            resolvedPreviewUrl
+          );
+        }
+
+        const effectiveKey = getTrackPreviewCacheKey({
+          id: targetTrack.id,
+          isrc: resolvedIsrc ?? (typeof cachedIsrc === 'string' ? cachedIsrc : targetTrack.isrc),
+        });
+        setActivePreview({ key: effectiveKey, url: resolvedPreviewUrl });
+
+        if (needsIsrc) {
+          setCachedTrackIsrc(targetTrack.id, resolvedIsrc);
+          const patchTrack = (item: TrackItem) =>
+            item.id === targetTrack.id ? { ...item, isrc: resolvedIsrc } : item;
+
+          setResults((prev) => prev.map(patchTrack));
+          setInspectedTrack((prev) => (prev ? patchTrack(prev) : prev));
+          setSheetTrack((prev) => (prev ? patchTrack(prev) : prev));
+
+          if (resolvedIsrc) {
+            setRecentTracks(saveRecentTrack({ ...targetTrack, isrc: resolvedIsrc }));
+          }
         }
       })
       .catch((err) => {
@@ -829,9 +977,23 @@ function TrackCodeWorkspace() {
 
   useEffect(() => {
     const activeTrack = isDesktop ? activeDesktopTrack : sheetTrack;
-    if (!activeTrack || activeTrack.isrc) return;
-    if (getCachedTrackIsrc(activeTrack.id) !== undefined) return;
-    fetchIsrcOnDemand(activeTrack);
+    if (!activeTrack) {
+      setActivePreview(null);
+      return;
+    }
+
+    const previewKey = getTrackPreviewCacheKey(activeTrack);
+    const cachedPreview = getCachedTrackPreview(previewKey);
+    const cachedIsrc = activeTrack.isrc ?? getCachedTrackIsrc(activeTrack.id);
+    const needsIsrc = !activeTrack.isrc && cachedIsrc === undefined;
+
+    if (cachedPreview !== undefined) {
+      setActivePreview({ key: previewKey, url: cachedPreview });
+    }
+
+    if (needsIsrc || cachedPreview === undefined) {
+      fetchIsrcOnDemand(activeTrack);
+    }
   }, [isDesktop, activeDesktopTrack, sheetTrack, fetchIsrcOnDemand]);
 
   const handleSelectTrack = useCallback(
@@ -849,10 +1011,6 @@ function TrackCodeWorkspace() {
       setInspectedTrack(effectiveTrack);
 
       if (effectiveTrack.isrc) {
-        if (isrcAbortControllerRef.current) {
-          isrcAbortControllerRef.current.abort();
-        }
-        fetchingTrackIdRef.current = null;
         setFetchingIsrcTrackId(null);
         setRecentTracks(saveRecentTrack(effectiveTrack));
         if (copied) {
@@ -863,10 +1021,9 @@ function TrackCodeWorkspace() {
         }
       } else {
         setAutoCopiedSignal(0);
-        if (cachedIsrc === undefined) {
-          fetchIsrcOnDemand(effectiveTrack);
-        }
       }
+
+      fetchIsrcOnDemand(effectiveTrack);
     },
     [showToast, fetchIsrcOnDemand]
   );
@@ -1392,6 +1549,11 @@ function TrackCodeWorkspace() {
                   Boolean(activeDesktopTrack?.id) &&
                   fetchingIsrcTrackId === activeDesktopTrack?.id
                 }
+                previewUrl={isDesktop ? activePreviewUrl : null}
+                isAudioPlaying={isDesktop && isAudioPlaying}
+                isAudioLoading={isDesktop && isAudioLoading}
+                audioProgress={isDesktop ? audioProgress : 0}
+                onTogglePreview={handleTogglePreview}
                 onCopied={handleInspectorCopied}
                 onCopyFailed={handleInspectorCopyFailed}
                 onSearchOtherVersions={handleSearchOtherVersions}
@@ -1421,6 +1583,11 @@ function TrackCodeWorkspace() {
             isFetchingIsrc={
               Boolean(sheetTrack?.id) && fetchingIsrcTrackId === sheetTrack?.id
             }
+            previewUrl={!isDesktop && sheetTrack ? activePreviewUrl : null}
+            isAudioPlaying={!isDesktop && isAudioPlaying}
+            isAudioLoading={!isDesktop && isAudioLoading}
+            audioProgress={!isDesktop ? audioProgress : 0}
+            onTogglePreview={handleTogglePreview}
             onClose={handleCloseSheet}
             onCopied={handleInspectorCopied}
             onCopyFailed={handleInspectorCopyFailed}

@@ -246,6 +246,7 @@ function normalizeTrack(raw: SpotifyRawTrack): TrackItem {
 interface DeezerSearchTrack {
   id: number;
   title?: string;
+  preview?: string;
   explicit_lyrics?: boolean;
   link?: string;
   artist?: { name?: string };
@@ -587,7 +588,10 @@ app.use(express.json());
 const searchCache = new BoundedTtlCache<TrackItem[]>(250, 15 * 60 * 1000);
 const deezerSearchCache = new BoundedTtlCache<TrackItem[]>(150, 5 * 60 * 1000);
 const trackCache = new BoundedTtlCache<TrackItem>(300, 60 * 60 * 1000);
-const isrcCache = new BoundedTtlCache<{ isrc: string | null }>(500, 24 * 60 * 60 * 1000);
+const isrcCache = new BoundedTtlCache<{ isrc: string | null; previewUrl: string | null }>(
+  500,
+  15 * 60 * 1000
+);
 
 interface SearchExecutionResult {
   status: number;
@@ -1633,85 +1637,176 @@ app.get('/api/quick-try', async (_req: Request, res: Response) => {
   });
 });
 
-export async function resolveTrackIsrc(
-  rawId: string,
-  rawSource = 'deezer'
-): Promise<string | null> {
-  const trimmedId = rawId.trim();
-  if (!trimmedId) return null;
+export interface ResolveTrackIsrcParams {
+  id?: string;
+  source?: string;
+  isrc?: string;
+  q?: string;
+}
+
+export interface TrackIsrcAndPreviewResult {
+  isrc: string | null;
+  previewUrl: string | null;
+}
+
+function normalizeCleanIsrc(rawIsrc?: string | null): string | null {
+  const raw = rawIsrc?.trim().toUpperCase();
+  if (!raw) return null;
+  return /^[A-Z0-9]{12}$/.test(raw) ? raw : raw;
+}
+
+function normalizePreviewUrl(rawUrl?: string | null): string | null {
+  const trimmed = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
+async function fetchDeezerPreviewByIsrcOrQuery(
+  isrc: string | null,
+  query: string
+): Promise<{ previewUrl: string | null; isrc: string | null }> {
+  let resolvedIsrc = isrc;
+
+  if (resolvedIsrc) {
+    const byIsrc = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+      `https://api.deezer.com/track/isrc:${encodeURIComponent(resolvedIsrc)}`
+    );
+    if (byIsrc && !byIsrc.error) {
+      const previewFromIsrc = normalizePreviewUrl(byIsrc.preview);
+      resolvedIsrc = normalizeCleanIsrc(byIsrc.isrc) ?? resolvedIsrc;
+      if (previewFromIsrc) {
+        return { previewUrl: previewFromIsrc, isrc: resolvedIsrc };
+      }
+    }
+  }
+
+  const trimmedQuery = query.trim();
+  if (trimmedQuery) {
+    const searchJson = await fetchDeezerJson<{
+      data?: DeezerSearchTrack[];
+      error?: { code?: number };
+    }>(`https://api.deezer.com/search?q=${encodeURIComponent(trimmedQuery)}&limit=1`);
+    const topMatch = Array.isArray(searchJson?.data) ? searchJson.data[0] : undefined;
+    const previewFromSearch = normalizePreviewUrl(topMatch?.preview);
+    if (previewFromSearch) {
+      return { previewUrl: previewFromSearch, isrc: resolvedIsrc };
+    }
+  }
+
+  return { previewUrl: null, isrc: resolvedIsrc };
+}
+
+export async function resolveTrackIsrcAndPreview(
+  params: ResolveTrackIsrcParams
+): Promise<TrackIsrcAndPreviewResult> {
+  const trimmedId = (params.id ?? '').trim();
+  const rawSource = (params.source ?? 'deezer').trim();
+  const passedIsrc = normalizeCleanIsrc(params.isrc);
+  const passedQuery = (params.q ?? '').trim().slice(0, 140);
+
+  if (!trimmedId && !passedIsrc && !passedQuery) {
+    return { isrc: null, previewUrl: null };
+  }
 
   const source: 'deezer' | 'spotify' =
     rawSource.toLowerCase() === 'spotify' && !trimmedId.startsWith('dz-')
       ? 'spotify'
       : 'deezer';
 
-  const cacheKey = `${source}:${trimmedId}`;
+  const cacheKey = `${trimmedId ? `${source}:${trimmedId}` : 'lookup'}:${passedIsrc ?? ''}:${passedQuery.toLowerCase()}`;
   const cached = isrcCache.get(cacheKey);
   if (cached) {
-    return cached.isrc;
+    return cached;
   }
 
-  if (source === 'deezer') {
+  if (trimmedId && source === 'deezer') {
     const cleanId = trimmedId.replace(/^dz-/i, '');
-    if (!/^\d+$/.test(cleanId)) {
-      return null;
-    }
+    if (/^\d+$/.test(cleanId)) {
+      const detail = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+        `https://api.deezer.com/track/${cleanId}`
+      );
+      if (detail && !detail.error) {
+        let cleanIsrc = normalizeCleanIsrc(detail.isrc) ?? passedIsrc;
+        let previewUrl = normalizePreviewUrl(detail.preview);
 
-    try {
-      const detailRes = await fetch(`https://api.deezer.com/track/${cleanId}`, {
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-      if (!detailRes.ok) {
-        return null;
+        if (!previewUrl) {
+          const fallbackQuery =
+            passedQuery || `${detail.title ?? ''} ${detail.artist?.name ?? ''}`.trim();
+          const fallback = await fetchDeezerPreviewByIsrcOrQuery(cleanIsrc, fallbackQuery);
+          previewUrl = fallback.previewUrl;
+          cleanIsrc = fallback.isrc ?? cleanIsrc;
+        }
+
+        const result = { isrc: cleanIsrc, previewUrl };
+        isrcCache.set(cacheKey, result);
+        return result;
       }
-      const detail = (await detailRes.json()) as DeezerTrackDetail & { error?: unknown };
-      if (!detail || detail.error) {
-        return null;
-      }
-      const rawIsrc = detail.isrc?.trim().toUpperCase();
-      const cleanIsrc = rawIsrc && /^[A-Z0-9]{12}$/.test(rawIsrc) ? rawIsrc : rawIsrc || null;
-      isrcCache.set(cacheKey, { isrc: cleanIsrc });
-      return cleanIsrc;
-    } catch {
-      return null;
     }
   }
 
-  const cachedTrack = trackCache.get(trimmedId);
-  if (cachedTrack) {
-    isrcCache.set(cacheKey, { isrc: cachedTrack.isrc });
-    return cachedTrack.isrc;
+  let resolvedIsrc = passedIsrc;
+  let fallbackQuery = passedQuery;
+
+  if (source === 'spotify' && trimmedId) {
+    const cachedTrack = trackCache.get(trimmedId);
+    if (cachedTrack) {
+      resolvedIsrc = resolvedIsrc ?? cachedTrack.isrc;
+      if (!fallbackQuery) {
+        fallbackQuery = `${cachedTrack.name} ${cachedTrack.primaryArtist}`.trim();
+      }
+    } else if (!resolvedIsrc && /^[A-Za-z0-9]{22}$/.test(trimmedId)) {
+      try {
+        const rawTrack = await spotifyGet<SpotifyRawTrack>(
+          `https://api.spotify.com/v1/tracks/${trimmedId}`
+        );
+        const track = normalizeTrack(rawTrack);
+        trackCache.set(trimmedId, track);
+        resolvedIsrc = track.isrc;
+        if (!fallbackQuery) {
+          fallbackQuery = `${track.name} ${track.primaryArtist}`.trim();
+        }
+      } catch {
+        // Ignore Spotify lookup failure so Deezer query fallback can still resolve a preview
+      }
+    }
   }
 
-  if (!/^[A-Za-z0-9]{22}$/.test(trimmedId)) {
-    return null;
+  const previewLookup = await fetchDeezerPreviewByIsrcOrQuery(resolvedIsrc, fallbackQuery);
+  const result = {
+    isrc: previewLookup.isrc ?? resolvedIsrc,
+    previewUrl: previewLookup.previewUrl,
+  };
+  if (result.isrc || result.previewUrl) {
+    isrcCache.set(cacheKey, result);
   }
+  return result;
+}
 
-  try {
-    const rawTrack = await spotifyGet<SpotifyRawTrack>(
-      `https://api.spotify.com/v1/tracks/${trimmedId}`
-    );
-    const track = normalizeTrack(rawTrack);
-    trackCache.set(trimmedId, track);
-    isrcCache.set(cacheKey, { isrc: track.isrc });
-    return track.isrc;
-  } catch {
-    return null;
-  }
+export async function resolveTrackIsrc(
+  rawId: string,
+  rawSource = 'deezer'
+): Promise<string | null> {
+  const result = await resolveTrackIsrcAndPreview({ id: rawId, source: rawSource });
+  return result.isrc;
 }
 
 app.get('/api/isrc', async (req: Request, res: Response) => {
   const id = typeof req.query.id === 'string' ? req.query.id.trim() : '';
   const source = typeof req.query.source === 'string' ? req.query.source.trim() : 'deezer';
+  const isrc = typeof req.query.isrc === 'string' ? req.query.isrc.trim() : '';
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
 
-  if (!id) {
-    res.status(400).json({ error: 'Track id is required.', isrc: null });
+  if (!id && !isrc && !q) {
+    res.status(400).json({
+      error: 'Track id, isrc, or query is required.',
+      isrc: null,
+      previewUrl: null,
+    });
     return;
   }
 
-  const isrc = await resolveTrackIsrc(id, source);
-  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-  res.json({ isrc });
+  const result = await resolveTrackIsrcAndPreview({ id, source, isrc, q });
+  res.setHeader('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=1800');
+  res.json(result);
 });
 
 async function executeSearchQuery(
