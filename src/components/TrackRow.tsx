@@ -48,10 +48,18 @@ export const TrackRow = memo(function TrackRow({
       onClick={() => void handleTap()}
       className={`group relative flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
         isSelected
-          ? 'border-white/[0.22] border-t-emerald-400/45 bg-[radial-gradient(120%_100%_at_10%_0%,rgba(48,209,88,0.14)_0%,rgba(255,255,255,0.06)_45%,rgba(255,255,255,0.02)_100%)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]'
-          : 'border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-white/[0.065] to-white/[0.02] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] hover:border-t-white/[0.28] active:border-t-white/[0.28]'
+          ? 'border-white/[0.18] border-t-white/[0.32] bg-gradient-to-b from-[#262629] to-[#18181B] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_8px_24px_rgba(0,0,0,0.45)]'
+          : 'border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] hover:border-t-white/[0.24] active:border-t-white/[0.24]'
       }`}
     >
+      {/* Subtle monochrome top specular catch for active/selected capsule */}
+      {isSelected && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_100%_at_15%_0%,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.03)_50%,transparent_100%)]"
+        />
+      )}
+
       {/* Staggered entrance light sweep (index * 45ms) & full 600ms tap reflection */}
       <span
         key={tapSweepCount}
@@ -125,7 +133,7 @@ export const TrackRow = memo(function TrackRow({
 
       <ChevronRight
         className={`relative z-10 h-4 w-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px] ${
-          isSelected ? 'text-[#30D158]' : 'text-[#48484A]'
+          isSelected ? 'text-white/90' : 'text-white/30'
         }`}
       />
     </button>

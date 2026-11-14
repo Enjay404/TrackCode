@@ -6,7 +6,7 @@ export const SkeletonRows = memo(function SkeletonRows({ count = 6 }: { count?: 
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex min-h-[70px] items-center gap-2.5 rounded-2xl border border-white/[0.08] border-t-white/[0.16] bg-gradient-to-b from-white/[0.065] to-white/[0.02] px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]"
+          className="flex min-h-[70px] items-center gap-2.5 rounded-2xl border border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-3.5 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
         >
           <div className="skeleton-shimmer h-12 w-12 shrink-0 rounded-[10px]" />
           <div className="min-w-0 flex-1 space-y-2">
