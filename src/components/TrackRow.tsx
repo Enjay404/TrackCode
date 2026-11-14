@@ -10,10 +10,15 @@ import { copyIsrcVerified } from '../utils/spotifyInput';
 
 interface TrackRowProps {
   track: TrackItem;
+  isSelected?: boolean;
   onSelect: (track: TrackItem, copied: boolean) => void;
 }
 
-export const TrackRow = memo(function TrackRow({ track, onSelect }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({
+  track,
+  isSelected = false,
+  onSelect,
+}: TrackRowProps) {
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
@@ -32,8 +37,14 @@ export const TrackRow = memo(function TrackRow({ track, onSelect }: TrackRowProp
   return (
     <button
       type="button"
+      data-track-id={track.id}
+      aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
-      className="group flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] last:border-b-0 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none"
+      className={`group flex min-h-[70px] w-full cursor-pointer items-center gap-2.5 border-b border-white/[0.08] px-3 py-3 text-left transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] last:border-b-0 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/85 focus-visible:bg-white/[0.06] focus-visible:outline-none ${
+        isSelected
+          ? 'lg:bg-white/[0.08] lg:ring-1 lg:ring-inset lg:ring-white/25'
+          : ''
+      }`}
     >
       <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#2C2C2E] ring-1 ring-white/10">
         {artSrc && !imgError ? (
@@ -90,7 +101,11 @@ export const TrackRow = memo(function TrackRow({ track, onSelect }: TrackRowProp
         </div>
       </div>
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-[#48484A] transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px]" />
+      <ChevronRight
+        className={`h-4 w-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-[3px] group-active:translate-x-[3px] ${
+          isSelected ? 'text-[#48484A] lg:text-[#30D158]' : 'text-[#48484A]'
+        }`}
+      />
     </button>
   );
 });

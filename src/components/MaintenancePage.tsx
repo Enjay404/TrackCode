@@ -16,7 +16,7 @@ export function MaintenancePage() {
         }}
       />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-[480px] flex-1 flex-col px-4 pb-24">
+      <div className="relative z-10 mx-auto flex w-full max-w-[480px] flex-1 flex-col px-4 pb-24 lg:pb-6">
         {/* Centered TrackCode Header */}
         <header
           className="flex flex-col items-center pb-5 text-center"

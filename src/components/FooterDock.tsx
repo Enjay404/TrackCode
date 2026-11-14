@@ -3,12 +3,8 @@ import { memo } from 'react';
 export const FooterDock = memo(function FooterDock() {
   return (
     <footer
-      className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-3 pt-6 pb-[max(14px,env(safe-area-inset-bottom))]"
-      style={{
-        contain: 'layout style',
-        background:
-          'linear-gradient(to top, rgba(0, 0, 0, 0.94) 40%, rgba(0, 0, 0, 0.6) 72%, rgba(0, 0, 0, 0) 100%)',
-      }}
+      className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-3 pt-6 pb-[max(14px,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/95 via-black/60 to-transparent lg:static lg:mt-10 lg:bg-none lg:px-0 lg:pt-2 lg:pb-8 lg:pointer-events-auto"
+      style={{ contain: 'layout style' }}
     >
       <div className="flex max-w-full items-center justify-center gap-2">
         <a

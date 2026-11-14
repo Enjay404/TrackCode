@@ -16,9 +16,11 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
+import { DesktopInspectorCard } from './components/DesktopInspectorCard';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
 import { FooterDock } from './components/FooterDock';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -58,10 +60,27 @@ const PLACEHOLDER_MESSAGES = [
   'Paste open.spotify.com or spotify.link',
 ] as const;
 
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handleChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    setIsDesktop(mq.matches);
+    mq.addEventListener('change', handleChange);
+    return () => mq.removeEventListener('change', handleChange);
+  }, []);
+
+  return isDesktop;
+}
+
 interface TrackListSectionProps {
   title: string;
   ariaLabel: string;
   tracks: TrackItem[];
+  selectedTrackId?: string | null;
   isLoading?: boolean;
   skeletonCount?: number;
   onSelect: (track: TrackItem, copied: boolean) => void;
@@ -72,6 +91,7 @@ const TrackListSection = memo(function TrackListSection({
   title,
   ariaLabel,
   tracks,
+  selectedTrackId = null,
   isLoading = false,
   skeletonCount = 4,
   onSelect,
@@ -98,7 +118,12 @@ const TrackListSection = memo(function TrackListSection({
           <SkeletonRows count={skeletonCount} />
         ) : (
           tracks.map((track) => (
-            <TrackRow key={track.id} track={track} onSelect={onSelect} />
+            <TrackRow
+              key={track.id}
+              track={track}
+              isSelected={selectedTrackId === track.id}
+              onSelect={onSelect}
+            />
           ))
         )}
       </div>
@@ -150,8 +175,8 @@ const ApiStatusPill = memo(function ApiStatusPill({ status }: { status: ApiStatu
   const deezerMeta = STATUS_STYLES[status.deezer === 'down' ? 'down' : 'online'];
 
   return (
-    <div className="flex justify-center pt-1" aria-label="API service status">
-      <div className="inline-flex items-center gap-2.5 rounded-full border border-white/[0.09] bg-white/[0.04] px-3.5 py-1.5 text-[11.5px] leading-none">
+    <div className="flex justify-center pt-1 lg:pt-0" aria-label="API service status">
+      <div className="inline-flex items-center gap-2.5 rounded-full border border-white/[0.09] bg-white/[0.04] px-3.5 py-1.5 text-[11.5px] leading-none lg:min-h-[38px] lg:px-4">
         <span className="inline-flex items-center gap-1.5">
           <StatusDot color={spotifyMeta.color} glow={spotifyMeta.glow} />
           <span className="font-medium text-white/85">Spotify</span>
@@ -189,6 +214,7 @@ function deriveApiStatus(meta: {
 }
 
 function TrackCodeWorkspace() {
+  const isDesktop = useIsDesktop();
   const [query, setQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -206,7 +232,8 @@ function TrackCodeWorkspace() {
   );
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
-  const [selectedTrack, setSelectedTrack] = useState<TrackItem | null>(null);
+  const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
+  const [inspectedTrack, setInspectedTrack] = useState<TrackItem | null>(null);
   const [autoCopiedSignal, setAutoCopiedSignal] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatusState>({
@@ -219,11 +246,38 @@ function TrackCodeWorkspace() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
-  const isOnline = useOnlineStatus();
+  const isDesktopRef = useRef(isDesktop);
+  isDesktopRef.current = isDesktop;
 
+  const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
   const isLinkMode = isSpotifyTrackLink(trimmedQuery);
   const lastCopiedTrack = recentTracks.find((item) => Boolean(item.isrc)) ?? null;
+
+  const visibleTracks = useMemo(() => {
+    if (trimmedQuery) {
+      return results;
+    }
+    const seen = new Set<string>();
+    const combined: TrackItem[] = [];
+    for (const item of [...recentTracks, ...quickTryTracks]) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        combined.push(item);
+      }
+    }
+    return combined;
+  }, [trimmedQuery, results, recentTracks, quickTryTracks]);
+
+  const activeDesktopTrack = useMemo(() => {
+    if (inspectedTrack && visibleTracks.some((t) => t.id === inspectedTrack.id)) {
+      return inspectedTrack;
+    }
+    if (trimmedQuery && results.length === 0) {
+      return inspectedTrack ?? recentTracks[0] ?? quickTryTracks[0] ?? null;
+    }
+    return visibleTracks[0] ?? inspectedTrack ?? null;
+  }, [inspectedTrack, visibleTracks, trimmedQuery, results.length, recentTracks, quickTryTracks]);
 
   const showToast = useCallback((message: string, tone: ToastState['tone'] = 'success') => {
     if (toastTimerRef.current) {
@@ -255,9 +309,11 @@ function TrackCodeWorkspace() {
         }
       });
 
-    // Warm up lazy BottomSheet chunk after initial paint so first track tap stays 60fps
+    // Warm up lazy mobile BottomSheet chunk after initial paint on smaller viewports
     const warmTimer = window.setTimeout(() => {
-      void import('./components/BottomSheet');
+      if (!isDesktopRef.current) {
+        void import('./components/BottomSheet');
+      }
     }, 800);
 
     return () => {
@@ -287,6 +343,84 @@ function TrackCodeWorkspace() {
     };
   }, []);
 
+  // Desktop Spotlight keyboard navigation (⌘K / / to focus, ↑/↓ to navigate, Enter to copy ISRC)
+  useEffect(() => {
+    if (!isDesktop) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInputFocused =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        return;
+      }
+
+      if (e.key === '/' && !isInputFocused && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (visibleTracks.length === 0) return;
+        e.preventDefault();
+        const currentIdx = activeDesktopTrack
+          ? visibleTracks.findIndex((t) => t.id === activeDesktopTrack.id)
+          : -1;
+        const nextIdx =
+          e.key === 'ArrowDown'
+            ? currentIdx < 0
+              ? 0
+              : Math.min(visibleTracks.length - 1, currentIdx + 1)
+            : currentIdx <= 0
+              ? 0
+              : currentIdx - 1;
+        const nextTrack = visibleTracks[nextIdx];
+        if (nextTrack) {
+          setInspectedTrack(nextTrack);
+          setAutoCopiedSignal(0);
+          const rowEl = document.querySelector<HTMLElement>(
+            `[data-track-id="${CSS.escape(nextTrack.id)}"]`
+          );
+          rowEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (target?.closest('button, a')) {
+          return;
+        }
+        // When typing an unsearched text query inside the input, let form submit trigger search
+        if (isInputFocused && trimmedQuery.length > 0 && !hasSearched) {
+          return;
+        }
+        if (activeDesktopTrack?.isrc) {
+          e.preventDefault();
+          void copyIsrcVerified(activeDesktopTrack.isrc).then((copied) => {
+            if (copied) {
+              setRecentTracks(saveRecentTrack(activeDesktopTrack));
+              setAutoCopiedSignal((s) => s + 1);
+              showToast(`Copied ${formatIsrcCode(activeDesktopTrack.isrc!)}`, 'success');
+            } else {
+              showToast('Press Copy ISRC in the inspector to copy', 'info');
+            }
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDesktop, visibleTracks, activeDesktopTrack, trimmedQuery, hasSearched, showToast]);
+
   const executeLookup = useCallback(
     async (rawInput: string, mode: 'link' | 'search') => {
       if (mode === 'search') {
@@ -300,6 +434,9 @@ function TrackCodeWorkspace() {
             setApiStatus(nextStatus);
           }
           setResults(cached.tracks);
+          if (cached.tracks.length > 0) {
+            setInspectedTrack(cached.tracks[0]);
+          }
           setErrorMessage(null);
           setIsRateLimited(false);
           setHasSearched(true);
@@ -343,7 +480,10 @@ function TrackCodeWorkspace() {
           (document.activeElement as HTMLElement | null)?.blur();
           setResults([track]);
           setHasSearched(true);
-          setSelectedTrack(track);
+          setInspectedTrack(track);
+          if (!isDesktopRef.current) {
+            setSheetTrack(track);
+          }
 
           if (track.isrc) {
             const copied = await copyIsrcVerified(track.isrc);
@@ -353,7 +493,7 @@ function TrackCodeWorkspace() {
               showToast(`Copied ${formatIsrcCode(track.isrc)}`, 'success');
             } else {
               setAutoCopiedSignal(0);
-              showToast('Tap Copy ISRC below to copy', 'info');
+              showToast('Tap Copy ISRC to copy', 'info');
             }
           } else {
             setAutoCopiedSignal(0);
@@ -395,6 +535,10 @@ function TrackCodeWorkspace() {
             deezerHealthy: meta.deezerHealthy,
           });
           setResults(tracks);
+          if (tracks.length > 0) {
+            setInspectedTrack(tracks[0]);
+            setAutoCopiedSignal(0);
+          }
           setHasSearched(true);
         }
       } catch (err) {
@@ -461,6 +605,10 @@ function TrackCodeWorkspace() {
         setApiStatus(nextStatus);
       }
       setResults(cached.tracks);
+      if (cached.tracks.length > 0) {
+        setInspectedTrack(cached.tracks[0]);
+        setAutoCopiedSignal(0);
+      }
       setIsLoading(false);
       setErrorMessage(null);
       setIsRateLimited(false);
@@ -498,8 +646,11 @@ function TrackCodeWorkspace() {
 
   const handleSelectTrack = useCallback(
     (track: TrackItem, copied: boolean) => {
-      (document.activeElement as HTMLElement | null)?.blur();
-      setSelectedTrack(track);
+      if (!isDesktopRef.current) {
+        (document.activeElement as HTMLElement | null)?.blur();
+        setSheetTrack(track);
+      }
+      setInspectedTrack(track);
       if (track.isrc) {
         setRecentTracks(saveRecentTrack(track));
         if (copied) {
@@ -555,16 +706,16 @@ function TrackCodeWorkspace() {
   }, [showToast]);
 
   const handleSearchOtherVersions = useCallback((track: TrackItem) => {
-    setSelectedTrack(null);
+    setSheetTrack(null);
     const nextQuery = `${track.name} ${track.primaryArtist}`.trim();
     setQuery(nextQuery);
   }, []);
 
   const handleCloseSheet = useCallback(() => {
-    setSelectedTrack(null);
+    setSheetTrack(null);
   }, []);
 
-  const handleBottomSheetCopied = useCallback(
+  const handleInspectorCopied = useCallback(
     (isrc: string, copiedTrack?: TrackItem) => {
       if (copiedTrack) {
         setRecentTracks(saveRecentTrack(copiedTrack));
@@ -574,7 +725,7 @@ function TrackCodeWorkspace() {
     [showToast]
   );
 
-  const handleBottomSheetCopyFailed = useCallback(() => {
+  const handleInspectorCopyFailed = useCallback(() => {
     showToast('Press and hold the code above to copy', 'info');
   }, [showToast]);
 
@@ -660,10 +811,9 @@ function TrackCodeWorkspace() {
       <DynamicIslandToast toast={toast} />
 
       <div
-        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black"
+        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black lg:max-w-5xl lg:px-8"
         style={{
           overflow: 'clip',
-          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
         }}
       >
         {/* Breathing Ambient Background Glow behind top ~35% (pure CSS GPU animation) */}
@@ -677,10 +827,10 @@ function TrackCodeWorkspace() {
           }}
         />
 
-        {/* Native iOS Large Title Header */}
+        {/* Responsive Header: Mobile Large Title / Desktop Top Bar */}
         <header
-          className="relative z-10 flex items-start justify-between px-4 pb-3"
-          style={{ paddingTop: 'max(18px, env(safe-area-inset-top))' }}
+          className="relative z-10 flex items-start justify-between px-4 pb-3 lg:items-center lg:px-0 lg:pt-8 lg:pb-6"
+          style={{ paddingTop: isDesktop ? undefined : 'max(18px, env(safe-area-inset-top))' }}
         >
           <div className="flex flex-col items-start">
             <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
@@ -692,7 +842,10 @@ function TrackCodeWorkspace() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 pt-0.5">
+          <div className="flex items-center gap-2 pt-0.5 lg:gap-3 lg:pt-0">
+            <div className="hidden lg:block">
+              <ApiStatusPill status={apiStatus} />
+            </div>
             <motion.button
               type="button"
               onClick={() => void handleShareApp()}
@@ -707,300 +860,342 @@ function TrackCodeWorkspace() {
           </div>
         </header>
 
-        {/* Floating Sticky Hero Liquid Glass Search Bar */}
-        <div className="sticky top-0 z-20 px-4 py-2">
-          <form
-            onSubmit={handleSearchSubmit}
-            className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
-          >
-            <span className="pointer-events-none flex pl-4">
-              {isLinkMode ? (
-                <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
-              ) : (
-                <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
-              )}
-            </span>
-
-            <div className="relative flex min-w-0 flex-1 items-center">
-              <input
-                ref={inputRef}
-                type="search"
-                inputMode="search"
-                enterKeyHint="search"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                value={query}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
-                aria-label="Search song, artist, or paste Spotify link"
-                className="min-h-[56px] w-full bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-              />
-
-              {query.length === 0 && !isSearchFocused && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 left-3 right-2 flex items-center overflow-hidden"
+        {/* Main Content Workspace: Single-Column Mobile / 12-Col Two-Column Split Desktop */}
+        <main className="relative z-10 flex-1 pb-24 lg:pb-4">
+          <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-7">
+            {/* Left Column (Desktop col-span-7) / Mobile Full Column */}
+            <div className="lg:col-span-7">
+              {/* Spotlight-Style Search Bar (Sticky on Mobile, Static inside Left Column on Desktop) */}
+              <div className="sticky top-0 z-20 px-4 py-2 lg:static lg:mb-5 lg:px-0 lg:py-0">
+                <form
+                  onSubmit={handleSearchSubmit}
+                  className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
                 >
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.span
-                      key={placeholderIndex}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.28, ease: 'easeOut' }}
-                      className="truncate text-[16px] text-white/[0.58]"
-                    >
-                      {PLACEHOLDER_MESSAGES[placeholderIndex]}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
+                  <span className="pointer-events-none flex pl-4">
+                    {isLinkMode ? (
+                      <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
+                    ) : (
+                      <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
+                    )}
+                  </span>
 
-            {query.length === 0 ? (
-              <motion.button
-                type="button"
-                onClick={() => void handlePasteFromClipboard()}
-                whileTap={{ scale: 0.97 }}
-                transition={SPRING_BUTTON}
-                className="mr-2 flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
-              >
-                <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
-                <span>Paste</span>
-              </motion.button>
-            ) : (
-              <motion.button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClearInput();
-                }}
-                whileTap={{ scale: 0.94 }}
-                transition={SPRING_BUTTON}
-                aria-label="Clear search"
-                className="relative z-20 mr-0.5 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
-                  <X className="h-3.5 w-3.5 stroke-[2.6]" />
-                </span>
-              </motion.button>
-            )}
-          </form>
-        </div>
+                  <div className="relative flex min-w-0 flex-1 items-center">
+                    <input
+                      ref={inputRef}
+                      type="search"
+                      inputMode="search"
+                      enterKeyHint="search"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={query}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setIsSearchFocused(false)}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
+                      aria-label="Search song, artist, or paste Spotify link"
+                      className="min-h-[56px] w-full bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                    />
 
-        {/* Main Content Area */}
-        <main className="relative z-10 flex-1 px-4 pt-2 pb-24">
-          {trimmedQuery ? (
-            <>
-              {isLoading && (
-                <div className="liquid-glass overflow-hidden rounded-[20px]">
-                  <SkeletonRows count={6} />
-                </div>
-              )}
-
-              {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
-                <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
-                  <p className="text-[13px] text-[#8E8E93]">
-                    Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
-                  </p>
-                </div>
-              )}
-
-              {!isLoading && errorMessage && (
-                <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
-                  {/* Subtle top radial specular glow (zero backdrop-filter) */}
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 top-0 h-32"
-                    style={{
-                      background:
-                        'radial-gradient(75% 85% at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 159, 10, 0.05) 48%, transparent 100%)',
-                    }}
-                  />
-
-                  {/* Centered top pill handle */}
-                  <div className="relative mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
-
-                  <h3 className="relative text-[18px] font-semibold tracking-[-0.02em] text-white">
-                    {isRateLimited ? "oh- well that didn't work 🙁" : "Link couldn't be read"}
-                  </h3>
-
-                  <p className="relative mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#98989D]">
-                    {isRateLimited
-                      ? "Too many people are searching at once! I'm working to get it fixed"
-                      : errorMessage}
-                  </p>
-
-                  {isRateLimited ? (
-                    <>
-                      {/* Report issue button strictly on 429 / server failures */}
-                      <motion.a
-                        href="https://instagram.com/enjay404"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        whileTap={{ scale: 0.97 }}
-                        transition={SPRING_BUTTON}
-                        className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+                    {query.length === 0 && !isSearchFocused && (
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-3 right-2 flex items-center overflow-hidden"
                       >
-                        <motion.span
-                          aria-hidden="true"
-                          animate={{ opacity: [0.35, 1, 0.35] }}
-                          transition={{
-                            duration: 2.2,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                          }}
-                          className="pointer-events-none absolute -inset-[1px] rounded-2xl border border-[#FF453A] shadow-[0_0_16px_rgba(255,69,58,0.45)]"
-                        />
-                        <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF453A] opacity-65" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF453A]" />
-                        </span>
-                        <span className="relative">Report it&apos;s not working</span>
-                      </motion.a>
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.span
+                            key={placeholderIndex}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            transition={{ duration: 0.28, ease: 'easeOut' }}
+                            className="truncate text-[16px] text-white/[0.58]"
+                          >
+                            {PLACEHOLDER_MESSAGES[placeholderIndex]}
+                          </motion.span>
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </div>
 
+                  {query.length === 0 ? (
+                    <div className="mr-2 flex shrink-0 items-center gap-2">
+                      <kbd
+                        aria-hidden="true"
+                        className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                      >
+                        ⌘K
+                      </kbd>
                       <motion.button
                         type="button"
-                        onClick={handleRetry}
+                        onClick={() => void handlePasteFromClipboard()}
                         whileTap={{ scale: 0.97 }}
                         transition={SPRING_BUTTON}
-                        className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                        className="flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
                       >
-                        <RotateCcw className="h-4 w-4 stroke-[2.2]" />
-                        <span>Try again</span>
+                        <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
+                        <span>Paste</span>
                       </motion.button>
-                    </>
-                  ) : (
-                    <motion.button
-                      type="button"
-                      onClick={handleClearInput}
-                      whileTap={{ scale: 0.97 }}
-                      transition={SPRING_BUTTON}
-                      className="relative mt-5 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[15px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
-                    >
-                      <Search className="h-4 w-4 stroke-[2.2]" />
-                      <span>Search by song title instead</span>
-                    </motion.button>
-                  )}
-                </div>
-              )}
-
-              {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
-                <Suspense
-                  fallback={
-                    <div className="liquid-glass overflow-hidden rounded-[20px]">
-                      <SkeletonRows count={3} />
                     </div>
-                  }
-                >
-                  <EmptySearchView
-                    query={trimmedQuery}
-                    onClearSearch={handleClearInput}
-                    onPasteLink={() => void handlePasteFromClipboard()}
-                  />
-                </Suspense>
-              )}
+                  ) : (
+                    <div className="mr-0.5 flex shrink-0 items-center gap-1 lg:mr-1.5">
+                      <kbd
+                        aria-hidden="true"
+                        className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                      >
+                        ⌘K
+                      </kbd>
+                      <motion.button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleClearInput();
+                        }}
+                        whileTap={{ scale: 0.94 }}
+                        transition={SPRING_BUTTON}
+                        aria-label="Clear search"
+                        className="relative z-20 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
+                      >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
+                          <X className="h-3.5 w-3.5 stroke-[2.6]" />
+                        </span>
+                      </motion.button>
+                    </div>
+                  )}
+                </form>
+              </div>
 
-              {!isLoading && !errorMessage && results.length > 0 && (
-                <section aria-label="Search results" className="pt-1">
-                  <div className="flex items-center justify-between px-1 pb-2">
-                    <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
-                      {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}
-                    </h2>
-                  </div>
-                  <div className="liquid-glass overflow-hidden rounded-[20px]">
-                    {results.map((track) => (
-                      <TrackRow
-                        key={track.id}
-                        track={track}
+              {/* Search Results / Home Track Lists */}
+              <div className="px-4 pt-2 lg:px-0 lg:pt-0">
+                {trimmedQuery ? (
+                  <>
+                    {isLoading && (
+                      <div className="liquid-glass overflow-hidden rounded-[20px]">
+                        <SkeletonRows count={6} />
+                      </div>
+                    )}
+
+                    {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
+                      <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
+                        <p className="text-[13px] text-[#8E8E93]">
+                          Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
+                        </p>
+                      </div>
+                    )}
+
+                    {!isLoading && errorMessage && (
+                      <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-x-0 top-0 h-32"
+                          style={{
+                            background:
+                              'radial-gradient(75% 85% at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 159, 10, 0.05) 48%, transparent 100%)',
+                          }}
+                        />
+
+                        <div className="relative mx-auto mb-4 h-1 w-9 rounded-full bg-white/20" />
+
+                        <h3 className="relative text-[18px] font-semibold tracking-[-0.02em] text-white">
+                          {isRateLimited ? "oh- well that didn't work 🙁" : "Link couldn't be read"}
+                        </h3>
+
+                        <p className="relative mx-auto mt-1.5 max-w-[320px] text-[13.5px] leading-relaxed text-[#98989D]">
+                          {isRateLimited
+                            ? "Too many people are searching at once! I'm working to get it fixed"
+                            : errorMessage}
+                        </p>
+
+                        {isRateLimited ? (
+                          <>
+                            <motion.a
+                              href="https://instagram.com/enjay404"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              whileTap={{ scale: 0.97 }}
+                              transition={SPRING_BUTTON}
+                              className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+                            >
+                              <motion.span
+                                aria-hidden="true"
+                                animate={{ opacity: [0.35, 1, 0.35] }}
+                                transition={{
+                                  duration: 2.2,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                }}
+                                className="pointer-events-none absolute -inset-[1px] rounded-2xl border border-[#FF453A] shadow-[0_0_16px_rgba(255,69,58,0.45)]"
+                              />
+                              <span className="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF453A] opacity-65" />
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-[#FF453A]" />
+                              </span>
+                              <span className="relative">Report it&apos;s not working</span>
+                            </motion.a>
+
+                            <motion.button
+                              type="button"
+                              onClick={handleRetry}
+                              whileTap={{ scale: 0.97 }}
+                              transition={SPRING_BUTTON}
+                              className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                            >
+                              <RotateCcw className="h-4 w-4 stroke-[2.2]" />
+                              <span>Try again</span>
+                            </motion.button>
+                          </>
+                        ) : (
+                          <motion.button
+                            type="button"
+                            onClick={handleClearInput}
+                            whileTap={{ scale: 0.97 }}
+                            transition={SPRING_BUTTON}
+                            className="relative mt-5 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[15px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                          >
+                            <Search className="h-4 w-4 stroke-[2.2]" />
+                            <span>Search by song title instead</span>
+                          </motion.button>
+                        )}
+                      </div>
+                    )}
+
+                    {!isLoading && !errorMessage && hasSearched && results.length === 0 && (
+                      <Suspense
+                        fallback={
+                          <div className="liquid-glass overflow-hidden rounded-[20px]">
+                            <SkeletonRows count={3} />
+                          </div>
+                        }
+                      >
+                        <EmptySearchView
+                          query={trimmedQuery}
+                          onClearSearch={handleClearInput}
+                          onPasteLink={() => void handlePasteFromClipboard()}
+                        />
+                      </Suspense>
+                    )}
+
+                    {!isLoading && !errorMessage && results.length > 0 && (
+                      <section aria-label="Search results" className="pt-1 lg:pt-0">
+                        <div className="flex items-center justify-between px-1 pb-2">
+                          <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
+                            {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}
+                          </h2>
+                          <span className="hidden text-[11.5px] text-[#8E8E93] lg:inline">
+                            ↑↓ navigate · Enter copy
+                          </span>
+                        </div>
+                        <div className="liquid-glass overflow-hidden rounded-[20px]">
+                          {results.map((track) => (
+                            <TrackRow
+                              key={track.id}
+                              track={track}
+                              isSelected={isDesktop && activeDesktopTrack?.id === track.id}
+                              onSelect={handleSelectTrack}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-5 pt-1 lg:pt-0">
+                    {/* Last Copied Quick-Grab Strip */}
+                    {lastCopiedTrack?.isrc && (
+                      <section aria-label="Last copied ISRC">
+                        <button
+                          type="button"
+                          onClick={() => void handleQuickCopyLast()}
+                          className="liquid-glass-strip group flex w-full cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                        >
+                          <span className="text-xs font-medium text-[#8E8E93]">
+                            Last copied
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono-isrc whitespace-nowrap text-xs font-medium tracking-[0.02em] text-[#D1D1D6]">
+                              {formatIsrcCode(lastCopiedTrack.isrc)}
+                            </span>
+                            <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105" />
+                          </span>
+                        </button>
+                      </section>
+                    )}
+
+                    {/* Recent History Inset Grouped Liquid Glass Card */}
+                    {recentTracks.length > 0 && (
+                      <TrackListSection
+                        title="Recent"
+                        ariaLabel="Recent copied tracks"
+                        tracks={recentTracks}
+                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : null}
+                        onSelect={handleSelectTrack}
+                        onClear={handleClearRecent}
+                      />
+                    )}
+
+                    {/* Popular Hits Inset Grouped Liquid Glass Card */}
+                    {(isQuickTryLoading || quickTryTracks.length > 0) && (
+                      <TrackListSection
+                        title="POPULAR HITS"
+                        ariaLabel="Popular Hits"
+                        tracks={quickTryTracks}
+                        selectedTrackId={isDesktop ? activeDesktopTrack?.id : null}
+                        isLoading={isQuickTryLoading}
+                        skeletonCount={5}
                         onSelect={handleSelectTrack}
                       />
-                    ))}
+                    )}
                   </div>
-                </section>
-              )}
-            </>
-          ) : (
-            <div className="space-y-5 pt-1">
-              {/* Last Copied Quick-Grab Strip */}
-              {lastCopiedTrack?.isrc && (
-                <section aria-label="Last copied ISRC">
-                  <button
-                    type="button"
-                    onClick={() => void handleQuickCopyLast()}
-                    className="liquid-glass-strip group flex w-full cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
-                  >
-                    <span className="text-xs font-medium text-[#8E8E93]">
-                      Last copied
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono-isrc whitespace-nowrap text-xs font-medium tracking-[0.02em] text-[#D1D1D6]">
-                        {formatIsrcCode(lastCopiedTrack.isrc)}
-                      </span>
-                      <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105" />
-                    </span>
-                  </button>
-                </section>
-              )}
+                )}
 
-              {/* Recent History Inset Grouped Liquid Glass Card */}
-              {recentTracks.length > 0 && (
-                <TrackListSection
-                  title="Recent"
-                  ariaLabel="Recent copied tracks"
-                  tracks={recentTracks}
-                  onSelect={handleSelectTrack}
-                  onClear={handleClearRecent}
-                />
-              )}
-
-              {/* Popular Hits Inset Grouped Liquid Glass Card */}
-              {(isQuickTryLoading || quickTryTracks.length > 0) && (
-                <TrackListSection
-                  title="POPULAR HITS"
-                  ariaLabel="Popular Hits"
-                  tracks={quickTryTracks}
-                  isLoading={isQuickTryLoading}
-                  skeletonCount={5}
-                  onSelect={handleSelectTrack}
-                />
-              )}
+                {/* Mobile & Tablet API Health Pill (< 1024px) */}
+                <div className="mt-5 lg:hidden">
+                  <ApiStatusPill status={apiStatus} />
+                </div>
+              </div>
             </div>
-          )}
 
-          {/* Live API Health Indicator Pill (shown on both Home & Results views) */}
-          <div className="mt-5">
-            <ApiStatusPill status={apiStatus} />
+            {/* Right Column (Desktop col-span-5): Persistent Live ISRC Inspector Card */}
+            <div className="hidden lg:block lg:col-span-5">
+              <DesktopInspectorCard
+                track={activeDesktopTrack}
+                copiedSignal={autoCopiedSignal}
+                isLoadingInitial={isQuickTryLoading}
+                onCopied={handleInspectorCopied}
+                onCopyFailed={handleInspectorCopyFailed}
+                onSearchOtherVersions={handleSearchOtherVersions}
+              />
+            </div>
           </div>
         </main>
-      </div>
 
-      {/* Pinned Floating Creator Footer Dock */}
-      <FooterDock />
+        {/* Footer: Fixed bottom dock on Mobile (<1024px), clean centered footer under workspace on Desktop (lg+) */}
+        <FooterDock />
+      </div>
 
       {/* Offline Status Indicator */}
       {!isOnline && (
-        <div className="fixed bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg">
+        <div className="fixed bottom-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-[#FF9F0A]/40 bg-[#1C1C1E]/95 px-3.5 py-2 text-[12px] font-medium text-[#FF9F0A] shadow-lg lg:bottom-6">
           <WifiOff className="h-3.5 w-3.5" />
           <span>Offline — Recent tracks still available</span>
         </div>
       )}
 
-      <Suspense fallback={null}>
-        <BottomSheet
-          track={selectedTrack}
-          autoCopiedSignal={autoCopiedSignal}
-          onClose={handleCloseSheet}
-          onCopied={handleBottomSheetCopied}
-          onCopyFailed={handleBottomSheetCopyFailed}
-          onSearchOtherVersions={handleSearchOtherVersions}
-        />
-      </Suspense>
+      {/* Mobile-Only Slide-Up Bottom Sheet (< 1024px) */}
+      <div className="lg:hidden">
+        <Suspense fallback={null}>
+          <BottomSheet
+            track={isDesktop ? null : sheetTrack}
+            autoCopiedSignal={autoCopiedSignal}
+            onClose={handleCloseSheet}
+            onCopied={handleInspectorCopied}
+            onCopyFailed={handleInspectorCopyFailed}
+            onSearchOtherVersions={handleSearchOtherVersions}
+          />
+        </Suspense>
+      </div>
     </div>
   );
 }
