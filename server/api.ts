@@ -631,8 +631,10 @@ const CHART_HISTORY_PATH = '/tmp/trackcode-chart-history.json';
 const CHART_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CHART_FALLBACK_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CHART_HISTORY_DAYS = 14;
-const APPLE_LK_RSS_URL =
-  'https://rss.marketingtools.apple.com/api/v2/lk/music/most-played/15/songs.json';
+
+function getAppleMostPlayedUrl(country: 'us' | 'lk', limit: number): string {
+  return `https://rss.marketingtools.apple.com/api/v2/${country}/music/most-played/${limit}/songs.json`;
+}
 
 const BASELINE_GLOBAL_CHART_RANKS: Record<string, number> = {
   USQX92600464: 2,
@@ -650,6 +652,16 @@ const BASELINE_GLOBAL_CHART_RANKS: Record<string, number> = {
   USQX92602558: 14,
   USQX92504224: 13,
   QZ8BZ2513510: 15,
+  USUG12408496: 17,
+  USUM72409273: 16,
+  USUM72401994: 18,
+  USAT22409172: 20,
+  USUM72403305: 19,
+  USUG12400910: 21,
+  USUYG1541249: 23,
+  USAT22001300: 22,
+  USUG12406903: 24,
+  USWB12302315: 25,
 };
 
 const BASELINE_SRI_LANKA_CHART_RANKS: Record<string, number> = {
@@ -668,6 +680,16 @@ const BASELINE_SRI_LANKA_CHART_RANKS: Record<string, number> = {
   QT6FN2584098: 14,
   SE6SA2579015: 13,
   SE6HN2622209: 15,
+  LKA0U2501043: 17,
+  INS182203091: 16,
+  ATR981208334: 18,
+  QM7Y32602645: 20,
+  ATR981168800: 19,
+  USA370563386: 21,
+  QZHN82382589: 23,
+  TCADT1873660: 22,
+  QM7Y32600288: 24,
+  QZSYP2456970: 25,
 };
 
 interface ChartHistoryFile {
@@ -676,14 +698,18 @@ interface ChartHistoryFile {
 }
 
 interface DailyDualChartCacheEntry {
+  limit: number;
   dateKey: string;
   global: TrackItem[];
   sriLanka: TrackItem[];
   expiresAt: number;
 }
 
-let dailyChartCache: DailyDualChartCacheEntry | null = null;
-let inflightDailyChartPromise: Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> | null = null;
+const dailyChartCache = new Map<number, DailyDualChartCacheEntry>();
+const inflightDailyChartPromises = new Map<
+  number,
+  Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }>
+>();
 
 const POPULAR_HITS_FALLBACK_TRACKS: TrackItem[] = [
   {
@@ -970,6 +996,196 @@ const POPULAR_HITS_FALLBACK_TRACKS: TrackItem[] = [
     source: 'deezer',
     rank: 15,
     rankChange: 'NEW',
+  },
+  {
+    id: 'dz-3106586641',
+    name: 'luther',
+    artists: 'Kendrick Lamar, SZA',
+    primaryArtist: 'Kendrick Lamar',
+    albumName: 'GNX',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/da5256ff8cacfe9ad90521f6e3792259/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/da5256ff8cacfe9ad90521f6e3792259/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12408496',
+    spotifyUrl: 'https://www.deezer.com/track/3106586641',
+    source: 'deezer',
+    rank: 16,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-2947516331',
+    name: 'Die With A Smile',
+    artists: 'Lady Gaga, Bruno Mars',
+    primaryArtist: 'Lady Gaga',
+    albumName: 'Die With A Smile',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/4bd5903f4ce8f2601916bfadb44efe8a/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/4bd5903f4ce8f2601916bfadb44efe8a/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUM72409273',
+    spotifyUrl: 'https://www.deezer.com/track/2947516331',
+    source: 'deezer',
+    rank: 17,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-2801558052',
+    name: 'BIRDS OF A FEATHER',
+    artists: 'Billie Eilish',
+    primaryArtist: 'Billie Eilish',
+    albumName: 'HIT ME HARD AND SOFT',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/5d284b31cb9ddeb1a0c79aede5a94e1c/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/5d284b31cb9ddeb1a0c79aede5a94e1c/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUM72401994',
+    spotifyUrl: 'https://www.deezer.com/track/2801558052',
+    source: 'deezer',
+    rank: 18,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-3050380851',
+    name: 'APT.',
+    artists: 'ROSÉ, Bruno Mars',
+    primaryArtist: 'ROSÉ',
+    albumName: 'APT.',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/258e6042338ce64bb4157c0c94b232ac/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/258e6042338ce64bb4157c0c94b232ac/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USAT22409172',
+    spotifyUrl: 'https://www.deezer.com/track/3050380851',
+    source: 'deezer',
+    rank: 19,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-2743578151',
+    name: 'Espresso',
+    artists: 'Sabrina Carpenter',
+    primaryArtist: 'Sabrina Carpenter',
+    albumName: 'Espresso',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/e3221287a77eb262944e6528766eeba4/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/e3221287a77eb262944e6528766eeba4/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUM72403305',
+    spotifyUrl: 'https://www.deezer.com/track/2743578151',
+    source: 'deezer',
+    rank: 20,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-2783963122',
+    name: 'Not Like Us',
+    artists: 'Kendrick Lamar',
+    primaryArtist: 'Kendrick Lamar',
+    albumName: 'Not Like Us',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/84345d29bc2ed8e713112425f8417e97/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/84345d29bc2ed8e713112425f8417e97/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12400910',
+    spotifyUrl: 'https://www.deezer.com/track/2783963122',
+    source: 'deezer',
+    rank: 21,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-2729273551',
+    name: 'A Bar Song (Tipsy)',
+    artists: 'Shaboozey',
+    primaryArtist: 'Shaboozey',
+    albumName: 'A Bar Song (Tipsy)',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/d4f0d9289d6f68204dee8a22fe777c70/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/d4f0d9289d6f68204dee8a22fe777c70/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUYG1541249',
+    spotifyUrl: 'https://www.deezer.com/track/2729273551',
+    source: 'deezer',
+    rank: 22,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-2454854845',
+    name: 'Pink Pony Club',
+    artists: 'Chappell Roan',
+    primaryArtist: 'Chappell Roan',
+    albumName: 'The Rise and Fall of a Midwest Princess',
+    albumType: 'single',
+    releaseYear: '2023',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/71486ce8b24f612c4887efa0f79a9f66/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/71486ce8b24f612c4887efa0f79a9f66/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USAT22001300',
+    spotifyUrl: 'https://www.deezer.com/track/2454854845',
+    source: 'deezer',
+    rank: 23,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-3047560351',
+    name: 'That’s So True',
+    artists: 'Gracie Abrams',
+    primaryArtist: 'Gracie Abrams',
+    albumName: 'The Secret of Us (Deluxe)',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: true,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/967769c4612d74e8f5c7da8798b28e13/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/967769c4612d74e8f5c7da8798b28e13/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USUG12406903',
+    spotifyUrl: 'https://www.deezer.com/track/3047560351',
+    source: 'deezer',
+    rank: 24,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-2319265555',
+    name: 'Lose Control',
+    artists: 'Teddy Swims',
+    primaryArtist: 'Teddy Swims',
+    albumName: "I've Tried Everything But Therapy (Part 1)",
+    albumType: 'single',
+    releaseYear: '2023',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/fb2f549900acdfaefeee8c718e42037b/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/fb2f549900acdfaefeee8c718e42037b/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USWB12302315',
+    spotifyUrl: 'https://www.deezer.com/track/2319265555',
+    source: 'deezer',
+    rank: 25,
+    rankChange: 0,
   },
 ];
 
@@ -1259,6 +1475,196 @@ const SRI_LANKA_FALLBACK_TRACKS: TrackItem[] = [
     rank: 15,
     rankChange: 'NEW',
   },
+  {
+    id: 'dz-3291736291',
+    name: 'Seethala Pinne',
+    artists: 'Kasun Kalhara, Kanchana Anuradhi',
+    primaryArtist: 'Kasun Kalhara',
+    albumName: 'Seethala Pinne',
+    albumType: 'single',
+    releaseYear: '2025',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/88e99cd4108f613bb4176a6a7cc175a6/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/88e99cd4108f613bb4176a6a7cc175a6/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'LKA0U2501043',
+    spotifyUrl: 'https://www.deezer.com/track/3291736291',
+    source: 'deezer',
+    rank: 16,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-3165685441',
+    name: 'Manike (From "Thank God")',
+    artists: 'Yohani, Jubin Nautiyal, Surya Ragunaathan',
+    primaryArtist: 'Yohani',
+    albumName: 'Manike (From "Thank God")',
+    albumType: 'single',
+    releaseYear: '2022',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/ef08fcc90370cfff19c050806da21dab/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/ef08fcc90370cfff19c050806da21dab/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'INS182203091',
+    spotifyUrl: 'https://www.deezer.com/track/3165685441',
+    source: 'deezer',
+    rank: 17,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-947460532',
+    name: 'Sandawathiye (feat. Ridma Weerawardena)',
+    artists: 'Charitha Attalage, Ridma Weerawardena',
+    primaryArtist: 'Charitha Attalage',
+    albumName: 'Dura Akahe Master Collection by Charitha Attalage',
+    albumType: 'single',
+    releaseYear: '2020',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/e63fda8f07dca3b60e9d0ea068ca5cde/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/e63fda8f07dca3b60e9d0ea068ca5cde/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'ATR981208334',
+    spotifyUrl: 'https://www.deezer.com/track/947460532',
+    source: 'deezer',
+    rank: 18,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-875181952',
+    name: 'Hanthana Sihine (feat. W.D. Amaradeva & Umaria Sinhawansa)',
+    artists: 'Aruna Gunawardana, W.D. Amaradeva, Umaria Sinhawansa',
+    primaryArtist: 'Aruna Gunawardana',
+    albumName: 'Hanthana Sihine (feat. W.D. Amaradeva & Umaria Sinhawansa)',
+    albumType: 'single',
+    releaseYear: '2020',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/2b3e91321b7917e3a79ab52bbff14a34/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/2b3e91321b7917e3a79ab52bbff14a34/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QM7Y32602645',
+    spotifyUrl: 'https://www.deezer.com/track/875181952',
+    source: 'deezer',
+    rank: 19,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-2801076412',
+    name: 'Visekari',
+    artists: 'Pasan Liyanage, Bachi Susan, SHIRAZ',
+    primaryArtist: 'Pasan Liyanage',
+    albumName: 'Visekari',
+    albumType: 'single',
+    releaseYear: '2017',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/ae0b6ec68a62469ed56bc1a96ed73735/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/ae0b6ec68a62469ed56bc1a96ed73735/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'ATR981168800',
+    spotifyUrl: 'https://www.deezer.com/track/2801076412',
+    source: 'deezer',
+    rank: 20,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-3128321661',
+    name: 'Neththara',
+    artists: 'Bathiya & Santhush, Ashanthi, Randhir, Nevanthi',
+    primaryArtist: 'Bathiya & Santhush',
+    albumName: 'Neththara',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/b9531e31e871be12857e0495b4cae6dd/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/b9531e31e871be12857e0495b4cae6dd/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'USA370563386',
+    spotifyUrl: 'https://www.deezer.com/track/3128321661',
+    source: 'deezer',
+    rank: 21,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-2234816337',
+    name: 'SILILARE',
+    artists: 'Sajitha Anthony',
+    primaryArtist: 'Sajitha Anthony',
+    albumName: 'SILILARE',
+    albumType: 'single',
+    releaseYear: '2023',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/33b386d7b12d855309b551323f42d3ad/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/33b386d7b12d855309b551323f42d3ad/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QZHN82382589',
+    spotifyUrl: 'https://www.deezer.com/track/2234816337',
+    source: 'deezer',
+    rank: 22,
+    rankChange: 1,
+  },
+  {
+    id: 'dz-539668742',
+    name: 'Pandama',
+    artists: 'Dhanith Sri',
+    primaryArtist: 'Dhanith Sri',
+    albumName: 'Pandama',
+    albumType: 'single',
+    releaseYear: '2018',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/13c5a146b411c25c1f42bfa195dc9a2c/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/13c5a146b411c25c1f42bfa195dc9a2c/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'TCADT1873660',
+    spotifyUrl: 'https://www.deezer.com/track/539668742',
+    source: 'deezer',
+    rank: 23,
+    rankChange: -1,
+  },
+  {
+    id: 'dz-3785905772',
+    name: 'Handa Allanna Aasa Gamana',
+    artists: 'Wayo, Methun SK',
+    primaryArtist: 'Wayo',
+    albumName: 'Handa Allanna Aasa Gamana',
+    albumType: 'single',
+    releaseYear: '2020',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/a3adafdd9494f5c37cce7263a50ffe27/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/a3adafdd9494f5c37cce7263a50ffe27/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QM7Y32600288',
+    spotifyUrl: 'https://www.deezer.com/track/3785905772',
+    source: 'deezer',
+    rank: 24,
+    rankChange: 0,
+  },
+  {
+    id: 'dz-2830861622',
+    name: 'Mai Mal',
+    artists: 'Yasas Medagedara, Shehan Galahitiyawa',
+    primaryArtist: 'Yasas Medagedara',
+    albumName: 'Mai Mal',
+    albumType: 'single',
+    releaseYear: '2024',
+    explicit: false,
+    albumArt: {
+      medium: 'https://cdn-images.dzcdn.net/images/cover/435f648a7d5cf3a228b3fa98e8fab595/250x250-000000-80-0-0.jpg',
+      large: 'https://cdn-images.dzcdn.net/images/cover/435f648a7d5cf3a228b3fa98e8fab595/500x500-000000-80-0-0.jpg',
+    },
+    isrc: 'QZSYP2456970',
+    spotifyUrl: 'https://www.deezer.com/track/2830861622',
+    source: 'deezer',
+    rank: 25,
+    rankChange: 0,
+  },
 ];
 
 function getUtcDateKey(date = new Date()): string {
@@ -1276,27 +1682,27 @@ function sleep(ms: number): Promise<void> {
 async function fetchDeezerJson<T extends { error?: { code?: number } }>(
   url: string
 ): Promise<T | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(url, {
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
       if (!res.ok) {
-        if (attempt === 0) {
-          await sleep(300);
+        if (attempt < 2) {
+          await sleep(300 * (attempt + 1));
           continue;
         }
         return null;
       }
       const data = (await res.json()) as T;
-      if (data && data.error?.code === 4 && attempt === 0) {
-        await sleep(350);
+      if (data && data.error?.code === 4 && attempt < 2) {
+        await sleep(350 * (attempt + 1) + Math.floor(Math.random() * 150));
         continue;
       }
       return data;
     } catch {
-      if (attempt === 0) {
-        await sleep(250);
+      if (attempt < 2) {
+        await sleep(250 * (attempt + 1));
       }
     }
   }
@@ -1408,7 +1814,8 @@ function rankTracksForRegion(
     };
   });
 
-  const changed = !history.regions?.[region]?.[dateKey];
+  const existingToday = history.regions?.[region]?.[dateKey];
+  const changed = !existingToday || Object.keys(existingToday).length < rawTracks.length;
   return { ranked, todayRanks, changed };
 }
 
@@ -1443,36 +1850,6 @@ async function applyDualChartRankHistory(
     global: globalOutcome.ranked,
     sriLanka: sriLankaOutcome.ranked,
   };
-}
-
-async function fetchRawGlobalChartTracks(): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
-  try {
-    const chartPayload = await fetchDeezerJson<{
-      data?: DeezerSearchTrack[];
-      error?: { code?: number };
-    }>('https://api.deezer.com/chart/0/tracks?limit=15');
-    const chartEntries = Array.isArray(chartPayload?.data) ? chartPayload.data.slice(0, 15) : [];
-    if (chartEntries.length === 0) {
-      throw new Error('DEEZER_CHART_EMPTY');
-    }
-
-    const detailResults = await mapInBatches(chartEntries, 5, 120, async (item): Promise<TrackItem | null> => {
-      const detail = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
-        `https://api.deezer.com/track/${item.id}`
-      );
-      if (!detail || detail.error || !detail.id) return null;
-      return normalizeDeezerTrack(detail);
-    });
-
-    const tracks = detailResults.filter((t): t is TrackItem => Boolean(t));
-    if (tracks.length < 5) {
-      throw new Error('DEEZER_CHART_NO_DETAILS');
-    }
-
-    return { tracks, usedFallback: false };
-  } catch {
-    return { tracks: POPULAR_HITS_FALLBACK_TRACKS, usedFallback: true };
-  }
 }
 
 interface AppleRssSong {
@@ -1527,7 +1904,7 @@ async function resolveAppleSongViaDeezer(song: AppleRssSong): Promise<TrackItem 
     const appleYear = (song.releaseDate ?? '').match(/^(\d{4})/)?.[1] ?? '';
 
     if (detail && !detail.error && detail.id) {
-      const normalized = normalizeDeezerTrack(detail);
+      const normalized = normalizeDeezerTrack(detail, true);
       return {
         ...normalized,
         releaseYear: normalized.releaseYear || appleYear,
@@ -1539,7 +1916,7 @@ async function resolveAppleSongViaDeezer(song: AppleRssSong): Promise<TrackItem 
       };
     }
 
-    const basicNormalized = normalizeDeezerTrack(topMatch);
+    const basicNormalized = normalizeDeezerTrack(topMatch, true);
     return {
       ...basicNormalized,
       releaseYear: basicNormalized.releaseYear || appleYear,
@@ -1554,23 +1931,33 @@ async function resolveAppleSongViaDeezer(song: AppleRssSong): Promise<TrackItem 
   return null;
 }
 
-async function fetchRawSriLankaChartTracks(): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+async function fetchAppleChartTracks(
+  country: 'us' | 'lk',
+  limit: number,
+  fallbackTracks: TrackItem[]
+): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+  const safeLimit = Math.min(Math.max(Math.trunc(limit) || 5, 5), 25);
   try {
-    const rssRes = await fetch(APPLE_LK_RSS_URL, {
+    const rssRes = await fetch(getAppleMostPlayedUrl(country, safeLimit), {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'TrackCode/1.0 (+https://trackcode.online)',
+      },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!rssRes.ok) {
-      throw new Error(`APPLE_LK_RSS_ERROR:${rssRes.status}`);
+      throw new Error(`APPLE_${country.toUpperCase()}_RSS_ERROR:${rssRes.status}`);
     }
 
     const rssPayload = (await rssRes.json()) as {
       feed?: { results?: AppleRssSong[] };
     };
     const appleSongs = Array.isArray(rssPayload.feed?.results)
-      ? rssPayload.feed.results.slice(0, 15)
+      ? rssPayload.feed.results.slice(0, safeLimit)
       : [];
-    if (appleSongs.length < 4) {
-      throw new Error('APPLE_LK_RSS_INSUFFICIENT');
+    const minRequired = safeLimit <= 5 ? 3 : 5;
+    if (appleSongs.length < minRequired) {
+      throw new Error(`APPLE_${country.toUpperCase()}_RSS_INSUFFICIENT`);
     }
 
     const resolvedResults = await mapInBatches(appleSongs, 5, 140, (song) =>
@@ -1578,30 +1965,69 @@ async function fetchRawSriLankaChartTracks(): Promise<{ tracks: TrackItem[]; use
     );
     const resolvedTracks = resolvedResults.filter((t): t is TrackItem => Boolean(t));
 
-    if (resolvedTracks.length < 4) {
-      throw new Error('SRI_LANKA_DEEZER_INSUFFICIENT');
+    if (resolvedTracks.length < minRequired) {
+      throw new Error(`${country.toUpperCase()}_DEEZER_INSUFFICIENT`);
     }
 
-    return { tracks: resolvedTracks, usedFallback: false };
+    return { tracks: resolvedTracks.slice(0, safeLimit), usedFallback: false };
   } catch {
-    return { tracks: SRI_LANKA_FALLBACK_TRACKS, usedFallback: true };
+    return { tracks: fallbackTracks.slice(0, safeLimit), usedFallback: true };
   }
 }
 
-async function fetchDailyDualCharts(): Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> {
+async function fetchRawGlobalChartTracks(
+  limit: number
+): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+  return fetchAppleChartTracks('us', limit, POPULAR_HITS_FALLBACK_TRACKS);
+}
+
+async function fetchRawSriLankaChartTracks(
+  limit: number
+): Promise<{ tracks: TrackItem[]; usedFallback: boolean }> {
+  return fetchAppleChartTracks('lk', limit, SRI_LANKA_FALLBACK_TRACKS);
+}
+
+async function fetchDailyDualCharts(
+  requestedLimit = 5
+): Promise<{ global: TrackItem[]; sriLanka: TrackItem[] }> {
+  const safeLimit = Math.min(Math.max(Math.trunc(requestedLimit) || 5, 5), 25);
   const todayKey = getUtcDateKey();
-  if (dailyChartCache && dailyChartCache.dateKey === todayKey && dailyChartCache.expiresAt > Date.now()) {
-    return { global: dailyChartCache.global, sriLanka: dailyChartCache.sriLanka };
+  const now = Date.now();
+
+  const cachedExact = dailyChartCache.get(safeLimit);
+  if (cachedExact && cachedExact.dateKey === todayKey && cachedExact.expiresAt > now) {
+    return {
+      global: cachedExact.global.slice(0, safeLimit),
+      sriLanka: cachedExact.sriLanka.slice(0, safeLimit),
+    };
   }
 
-  if (inflightDailyChartPromise) {
-    return inflightDailyChartPromise;
+  const cachedFull = dailyChartCache.get(25);
+  if (cachedFull && cachedFull.dateKey === todayKey && cachedFull.expiresAt > now) {
+    return {
+      global: cachedFull.global.slice(0, safeLimit),
+      sriLanka: cachedFull.sriLanka.slice(0, safeLimit),
+    };
   }
 
-  inflightDailyChartPromise = (async () => {
-    const globalResult = await fetchRawGlobalChartTracks();
+  const inflightExact = inflightDailyChartPromises.get(safeLimit);
+  if (inflightExact) {
+    return inflightExact;
+  }
+
+  const inflightFull = inflightDailyChartPromises.get(25);
+  if (inflightFull) {
+    const fullCharts = await inflightFull;
+    return {
+      global: fullCharts.global.slice(0, safeLimit),
+      sriLanka: fullCharts.sriLanka.slice(0, safeLimit),
+    };
+  }
+
+  const promise = (async () => {
+    const globalResult = await fetchRawGlobalChartTracks(safeLimit);
     await sleep(150);
-    const sriLankaResult = await fetchRawSriLankaChartTracks();
+    const sriLankaResult = await fetchRawSriLankaChartTracks(safeLimit);
 
     const ranked = await applyDualChartRankHistory(
       globalResult.tracks,
@@ -1610,20 +2036,172 @@ async function fetchDailyDualCharts(): Promise<{ global: TrackItem[]; sriLanka: 
     );
 
     const anyFallback = globalResult.usedFallback || sriLankaResult.usedFallback;
-    dailyChartCache = {
+    dailyChartCache.set(safeLimit, {
+      limit: safeLimit,
       dateKey: todayKey,
       global: ranked.global,
       sriLanka: ranked.sriLanka,
       expiresAt: Date.now() + (anyFallback ? CHART_FALLBACK_CACHE_TTL_MS : CHART_CACHE_TTL_MS),
-    };
+    });
 
     return ranked;
   })();
 
+  inflightDailyChartPromises.set(safeLimit, promise);
+
   try {
-    return await inflightDailyChartPromise;
+    return await promise;
   } finally {
-    inflightDailyChartPromise = null;
+    inflightDailyChartPromises.delete(safeLimit);
+  }
+}
+
+function getPreviousRanksForRegion(
+  region: ChartRegion,
+  history: ChartHistoryFile,
+  dateKey: string
+): Record<string, number> {
+  const regionHistory: Record<string, Record<string, number>> = {
+    ...(region === 'global' ? history.days : undefined),
+    ...history.regions?.[region],
+  };
+  const previousDates = Object.keys(regionHistory)
+    .filter((d) => d < dateKey)
+    .sort();
+  const previousDayKey = previousDates[previousDates.length - 1];
+  return previousDayKey
+    ? regionHistory[previousDayKey]
+    : region === 'global'
+      ? BASELINE_GLOBAL_CHART_RANKS
+      : BASELINE_SRI_LANKA_CHART_RANKS;
+}
+
+async function fetchAppleRssEntries(
+  country: 'us' | 'lk',
+  count: number
+): Promise<AppleRssSong[]> {
+  const safeCount = Math.min(Math.max(Math.trunc(count) || 5, 1), 25);
+  const rssRes = await fetch(getAppleMostPlayedUrl(country, safeCount), {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'TrackCode/1.0 (+https://trackcode.online)',
+    },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (!rssRes.ok) {
+    throw new Error(`APPLE_${country.toUpperCase()}_RSS_ERROR:${rssRes.status}`);
+  }
+  const rssPayload = (await rssRes.json()) as {
+    feed?: { results?: AppleRssSong[] };
+  };
+  return Array.isArray(rssPayload.feed?.results)
+    ? rssPayload.feed.results.slice(0, safeCount)
+    : [];
+}
+
+async function streamQuickTryRegionTracks(
+  req: Request,
+  res: Response,
+  chartRegion: ChartRegion,
+  offset: number,
+  limit: number
+): Promise<void> {
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.flushHeaders?.();
+
+  let aborted = false;
+  req.on('close', () => {
+    aborted = true;
+  });
+
+  const todayKey = getUtcDateKey();
+  const country: 'us' | 'lk' = chartRegion === 'global' ? 'us' : 'lk';
+  const fallbackTracks =
+    chartRegion === 'global' ? POPULAR_HITS_FALLBACK_TRACKS : SRI_LANKA_FALLBACK_TRACKS;
+  const targetTotal = Math.min(25, offset + limit);
+
+  const history = await readChartHistory();
+  const previousRanks = getPreviousRanksForRegion(chartRegion, history, todayKey);
+
+  const cachedFull = dailyChartCache.get(25);
+  if (cachedFull && cachedFull.dateKey === todayKey && cachedFull.expiresAt > Date.now()) {
+    const cachedSlice = cachedFull[chartRegion].slice(offset, offset + limit);
+    for (const track of cachedSlice) {
+      if (aborted || res.writableEnded) break;
+      res.write(`${JSON.stringify(track)}\n`);
+    }
+    if (!res.writableEnded) res.end();
+    return;
+  }
+
+  let resolutionPromises: Array<Promise<TrackItem | null>> = [];
+  try {
+    const appleSongs = await fetchAppleRssEntries(country, targetTotal);
+    const slicedSongs = appleSongs.slice(offset, targetTotal);
+    resolutionPromises = slicedSongs.map((song) =>
+      resolveAppleSongViaDeezer(song).catch(() => null)
+    );
+  } catch {
+    resolutionPromises = [];
+  }
+
+  const emittedIds = new Set<string>();
+  const streamedTodayRanks: Record<string, number> = {};
+
+  for (let i = 0; i < limit; i++) {
+    if (aborted || res.writableEnded) break;
+
+    const rank = offset + i + 1;
+    let resolvedTrack: TrackItem | null = null;
+
+    if (i < resolutionPromises.length) {
+      resolvedTrack = await resolutionPromises[i];
+    }
+
+    if (!resolvedTrack || emittedIds.has(resolvedTrack.id)) {
+      const candidateFallback =
+        fallbackTracks[offset + i] ??
+        fallbackTracks.find((t) => !emittedIds.has(t.id)) ??
+        null;
+      resolvedTrack = candidateFallback;
+    }
+
+    if (!resolvedTrack || emittedIds.has(resolvedTrack.id)) {
+      continue;
+    }
+
+    emittedIds.add(resolvedTrack.id);
+    const trackKey = getChartTrackKey(resolvedTrack);
+    streamedTodayRanks[trackKey] = rank;
+    const prevRank = previousRanks[trackKey];
+    const rankChange: number | 'NEW' =
+      typeof prevRank === 'number' ? prevRank - rank : 'NEW';
+
+    const rankedTrack: TrackItem = {
+      ...resolvedTrack,
+      rank,
+      rankChange,
+    };
+
+    if (aborted || res.writableEnded) break;
+    res.write(`${JSON.stringify(rankedTrack)}\n`);
+  }
+
+  if (!res.writableEnded) {
+    res.end();
+  }
+
+  if (Object.keys(streamedTodayRanks).length > 0) {
+    if (!history.regions) history.regions = {};
+    history.regions[chartRegion] = {
+      ...(history.regions[chartRegion] ?? {}),
+      [todayKey]: {
+        ...(history.regions[chartRegion]?.[todayKey] ?? {}),
+        ...streamedTodayRanks,
+      },
+    };
+    void writeChartHistory(history);
   }
 }
 
@@ -1635,12 +2213,35 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, configured });
 });
 
-app.get('/api/quick-try', async (_req: Request, res: Response) => {
-  const charts = await fetchDailyDualCharts();
+app.get('/api/quick-try', async (req: Request, res: Response) => {
+  if (String(req.query.stream ?? '') === '1') {
+    const rawRegion = String(req.query.region ?? 'global').trim().toLowerCase();
+    const chartRegion: ChartRegion =
+      rawRegion === 'lk' || rawRegion === 'srilanka' ? 'sriLanka' : 'global';
+    const parsedOffset = Number(req.query.offset);
+    const offset = Math.min(
+      Math.max(Number.isFinite(parsedOffset) ? Math.trunc(parsedOffset) : 5, 0),
+      24
+    );
+    const parsedLimit = Number(req.query.limit);
+    const limit = Math.min(
+      Math.max(Number.isFinite(parsedLimit) ? Math.trunc(parsedLimit) : 20, 1),
+      25 - offset
+    );
+    await streamQuickTryRegionTracks(req, res, chartRegion, offset, limit);
+    return;
+  }
+
+  const parsedLimit = Number(req.query.limit);
+  const limit = Math.min(
+    Math.max(Number.isFinite(parsedLimit) ? Math.trunc(parsedLimit) : 5, 5),
+    25
+  );
+  const charts = await fetchDailyDualCharts(limit);
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=172800');
   res.json({
-    global: charts.global,
-    sriLanka: charts.sriLanka,
+    global: charts.global.slice(0, limit),
+    sriLanka: charts.sriLanka.slice(0, limit),
     updatedAt: getUtcDateKey(),
   });
 });

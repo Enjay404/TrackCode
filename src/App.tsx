@@ -7,6 +7,7 @@ import {
   Copy,
   Globe,
   Link2,
+  Loader2,
   RotateCcw,
   Search,
   Share,
@@ -151,6 +152,8 @@ interface TrackListSectionProps {
   subtitle?: string;
   headerControl?: ReactNode;
   footerControl?: ReactNode;
+  extraLoadingContent?: ReactNode;
+  isExpandedScrollable?: boolean;
   listKeyPrefix?: string;
   ariaLabel: string;
   tracks: TrackItem[];
@@ -171,6 +174,8 @@ const TrackListSection = memo(function TrackListSection({
   subtitle,
   headerControl,
   footerControl,
+  extraLoadingContent,
+  isExpandedScrollable = false,
   listKeyPrefix,
   ariaLabel,
   tracks,
@@ -206,27 +211,37 @@ const TrackListSection = memo(function TrackListSection({
         ) : null}
       </div>
       {headerControl}
-      <div className="touch-pan-y space-y-2">
+      <div
+        className={
+          isExpandedScrollable
+            ? 'trackcode-scroll touch-pan-y max-h-[410px] space-y-2.5 overflow-y-auto overscroll-contain scroll-smooth pr-1 md:max-h-[460px]'
+            : 'touch-pan-y space-y-2'
+        }
+      >
         {isLoading ? (
           <SkeletonRows count={skeletonCount} />
         ) : (
-          tracks.map((track, index) => {
-            const isThisActive = playingTrackId === track.id;
-            return (
-              <TrackRow
-                key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
-                track={track}
-                index={index}
-                isSelected={selectedTrackId === track.id}
-                showRank={showRanks}
-                isPreviewPlaying={isThisActive && !isAudioLoading}
-                isPreviewLoading={isThisActive && isAudioLoading}
-                previewProgress={isThisActive ? audioProgress : 0}
-                onTogglePreview={onTogglePreview}
-                onSelect={onSelect}
-              />
-            );
-          })
+          <>
+            {tracks.map((track, index) => {
+              const isThisActive = playingTrackId === track.id;
+              return (
+                <TrackRow
+                  key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
+                  track={track}
+                  index={index}
+                  isSelected={selectedTrackId === track.id}
+                  showRank={showRanks}
+                  animateStreamIn={showRanks && index >= 5}
+                  isPreviewPlaying={isThisActive && !isAudioLoading}
+                  isPreviewLoading={isThisActive && isAudioLoading}
+                  previewProgress={isThisActive ? audioProgress : 0}
+                  onTogglePreview={onTogglePreview}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+            {extraLoadingContent}
+          </>
         )}
       </div>
       {!isLoading && footerControl}
@@ -329,22 +344,23 @@ function TrackCodeWorkspace() {
 
   const [popularRegion, setPopularRegion] = useState<ChartRegion>('global');
   const [showAllHits, setShowAllHits] = useState(false);
+  const [loadedFullRegions, setLoadedFullRegions] = useState<{
+    global: boolean;
+    lk: boolean;
+  }>({ global: false, lk: false });
+  const [isStreamingMore, setIsStreamingMore] = useState(false);
   const [quickTryCharts, setQuickTryCharts] = useState(() => loadCachedQuickTryCharts());
   const [isQuickTryLoading, setIsQuickTryLoading] = useState(() => {
     const cached = loadCachedQuickTryCharts();
     return cached.global.length === 0 && cached.sriLanka.length === 0;
   });
+  const activeRegionKey: 'global' | 'lk' = popularRegion === 'global' ? 'global' : 'lk';
   const activeQuickTryTracks =
     popularRegion === 'global' ? quickTryCharts.global : quickTryCharts.sriLanka;
   const displayedQuickTryTracks = useMemo(
     () => (showAllHits ? activeQuickTryTracks : activeQuickTryTracks.slice(0, 5)),
     [activeQuickTryTracks, showAllHits]
   );
-
-  const handleRegionChange = useCallback((nextRegion: ChartRegion) => {
-    setPopularRegion(nextRegion);
-    setShowAllHits(false);
-  }, []);
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
   const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
@@ -369,6 +385,7 @@ function TrackCodeWorkspace() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const isrcAbortControllerRef = useRef<AbortController | null>(null);
   const previewFetchAbortRef = useRef<AbortController | null>(null);
+  const streamAbortControllerRef = useRef<AbortController | null>(null);
   const fetchingTrackIdRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<number | null>(null);
   const skipNextAutoLookupRef = useRef<string | null>(null);
@@ -386,6 +403,18 @@ function TrackCodeWorkspace() {
   isAudioLoadingRef.current = isAudioLoading;
   const isDesktopRef = useRef(isDesktop);
   isDesktopRef.current = isDesktop;
+  const loadedFullRegionsRef = useRef(loadedFullRegions);
+  loadedFullRegionsRef.current = loadedFullRegions;
+
+  const handleRegionChange = useCallback((nextRegion: ChartRegion) => {
+    if (streamAbortControllerRef.current) {
+      streamAbortControllerRef.current.abort();
+      streamAbortControllerRef.current = null;
+    }
+    setIsStreamingMore(false);
+    setPopularRegion(nextRegion);
+    setShowAllHits(false);
+  }, []);
 
   const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
@@ -454,10 +483,150 @@ function TrackCodeWorkspace() {
     setAudioProgress(0);
   }, []);
 
+  const handleToggleShowMoreHits = useCallback(async () => {
+    if (showAllHits) {
+      if (streamAbortControllerRef.current) {
+        streamAbortControllerRef.current.abort();
+        streamAbortControllerRef.current = null;
+      }
+      setIsStreamingMore(false);
+      setShowAllHits(false);
+      return;
+    }
+
+    const targetRegion: ChartRegion = popularRegion;
+    const regionKey: 'global' | 'lk' = targetRegion === 'global' ? 'global' : 'lk';
+
+    setShowAllHits(true);
+
+    if (loadedFullRegions[regionKey]) {
+      return;
+    }
+
+    if (streamAbortControllerRef.current) {
+      streamAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    streamAbortControllerRef.current = controller;
+    setIsStreamingMore(true);
+    setQuickTryCharts((prev) => ({
+      ...prev,
+      [targetRegion]: prev[targetRegion].slice(0, 5),
+    }));
+
+    const streamedTracks: TrackItem[] = [];
+
+    const appendStreamedTrack = (track: TrackItem) => {
+      if (!track || !track.id) return;
+      if (typeof track.preview === 'string' && /^https?:\/\//i.test(track.preview.trim())) {
+        cacheTrackPreviewsFromTracks([track]);
+      }
+      streamedTracks.push(track);
+      setQuickTryCharts((prev) => {
+        const existing = prev[targetRegion];
+        const filtered = existing.filter(
+          (item) => item.id !== track.id && item.rank !== track.rank
+        );
+        const merged = [...filtered, track].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+        return {
+          ...prev,
+          [targetRegion]: merged,
+        };
+      });
+    };
+
+    try {
+      const res = await fetch(
+        `/api/quick-try?region=${regionKey}&offset=5&limit=20&stream=1`,
+        { signal: controller.signal }
+      );
+      if (!res.ok) {
+        throw new Error(`HTTP_${res.status}`);
+      }
+      if (!res.body) {
+        const text = await res.text();
+        for (const rawLine of text.split('\n')) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          appendStreamedTrack(JSON.parse(line) as TrackItem);
+        }
+      } else {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (controller.signal.aborted) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            try {
+              const parsed = JSON.parse(line) as TrackItem;
+              appendStreamedTrack(parsed);
+            } catch {
+              // Ignore malformed partial line
+            }
+          }
+        }
+
+        const trailing = (buffer + decoder.decode()).trim();
+        if (trailing && !controller.signal.aborted) {
+          for (const rawLine of trailing.split('\n')) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            try {
+              const parsed = JSON.parse(line) as TrackItem;
+              appendStreamedTrack(parsed);
+            } catch {
+              // Ignore trailing parse error
+            }
+          }
+        }
+      }
+
+      if (!controller.signal.aborted && streamedTracks.length > 0) {
+        loadedFullRegionsRef.current = {
+          ...loadedFullRegionsRef.current,
+          [regionKey]: true,
+        };
+        setLoadedFullRegions((prev) => ({ ...prev, [regionKey]: true }));
+        setQuickTryCharts((prev) => {
+          const synced = syncQuickTryChartHistory(prev[targetRegion], targetRegion);
+          const nextCharts = {
+            ...prev,
+            [targetRegion]: synced,
+          };
+          saveCachedQuickTryCharts(nextCharts);
+          return nextCharts;
+        });
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') {
+        return;
+      }
+      if (streamedTracks.length === 0) {
+        showToast('Could not load more tracks', 'info');
+      }
+    } finally {
+      if (streamAbortControllerRef.current === controller) {
+        streamAbortControllerRef.current = null;
+        setIsStreamingMore(false);
+      }
+    }
+  }, [showAllHits, popularRegion, loadedFullRegions, showToast]);
+
   useEffect(() => {
     let cancelled = false;
 
-    fetch('/api/quick-try')
+    fetch('/api/quick-try?limit=5')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: QuickTryApiResponse | null) => {
         if (!cancelled && data) {
@@ -465,13 +634,24 @@ function TrackCodeWorkspace() {
           const rawSriLanka = Array.isArray(data.sriLanka) ? data.sriLanka : [];
           if (rawGlobal.length > 0 || rawSriLanka.length > 0) {
             cacheTrackPreviewsFromTracks([...rawGlobal, ...rawSriLanka]);
-            const nextCharts = {
-              global: rawGlobal.length > 0 ? syncQuickTryChartHistory(rawGlobal, 'global') : [],
-              sriLanka:
-                rawSriLanka.length > 0 ? syncQuickTryChartHistory(rawSriLanka, 'sriLanka') : [],
-            };
-            setQuickTryCharts(nextCharts);
-            saveCachedQuickTryCharts(nextCharts);
+            setQuickTryCharts((prev) => {
+              const nextCharts = {
+                global:
+                  loadedFullRegionsRef.current.global && prev.global.length > 5
+                    ? prev.global
+                    : rawGlobal.length > 0
+                      ? syncQuickTryChartHistory(rawGlobal, 'global')
+                      : prev.global,
+                sriLanka:
+                  loadedFullRegionsRef.current.lk && prev.sriLanka.length > 5
+                    ? prev.sriLanka
+                    : rawSriLanka.length > 0
+                      ? syncQuickTryChartHistory(rawSriLanka, 'sriLanka')
+                      : prev.sriLanka,
+              };
+              saveCachedQuickTryCharts(nextCharts);
+              return nextCharts;
+            });
           }
         }
       })
@@ -494,6 +674,10 @@ function TrackCodeWorkspace() {
     return () => {
       cancelled = true;
       window.clearTimeout(warmTimer);
+      if (streamAbortControllerRef.current) {
+        streamAbortControllerRef.current.abort();
+        streamAbortControllerRef.current = null;
+      }
     };
   }, []);
 
@@ -1850,18 +2034,48 @@ function TrackCodeWorkspace() {
                             onChange={handleRegionChange}
                           />
                         }
+                        extraLoadingContent={
+                          showAllHits && isStreamingMore ? (
+                            <SkeletonRows count={1} variant="sweep" />
+                          ) : null
+                        }
+                        isExpandedScrollable={showAllHits}
                         footerControl={
-                          activeQuickTryTracks.length > 5 ? (
+                          activeQuickTryTracks.length > 5 ||
+                          (!loadedFullRegions[activeRegionKey] &&
+                            activeQuickTryTracks.length >= 5) ? (
                             <button
                               type="button"
-                              onClick={() => setShowAllHits((prev) => !prev)}
+                              onClick={() => void handleToggleShowMoreHits()}
                               className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-2xl border border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-3 text-[13px] font-medium text-white/80 transition-all duration-150 hover:from-[#232326] hover:to-[#17171A] hover:text-white active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
                             >
-                              <span>{showAllHits ? 'Show less' : 'Show more'}</span>
-                              {showAllHits ? (
-                                <ChevronUp className="h-4 w-4 text-white/50" aria-hidden="true" />
+                              {isStreamingMore ? (
+                                <>
+                                  <Loader2
+                                    className="h-3.5 w-3.5 animate-spin text-white/60"
+                                    aria-hidden="true"
+                                  />
+                                  <span>Show less</span>
+                                  <ChevronUp
+                                    className="h-4 w-4 text-white/50"
+                                    aria-hidden="true"
+                                  />
+                                </>
                               ) : (
-                                <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
+                                <>
+                                  <span>{showAllHits ? 'Show less' : 'Show more'}</span>
+                                  {showAllHits ? (
+                                    <ChevronUp
+                                      className="h-4 w-4 text-white/50"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <ChevronDown
+                                      className="h-4 w-4 text-white/50"
+                                      aria-hidden="true"
+                                    />
+                                  )}
+                                </>
                               )}
                             </button>
                           ) : null

@@ -16,6 +16,7 @@ interface TrackRowProps {
   index?: number;
   isSelected?: boolean;
   showRank?: boolean;
+  animateStreamIn?: boolean;
   isPreviewPlaying?: boolean;
   isPreviewLoading?: boolean;
   previewProgress?: number;
@@ -28,6 +29,7 @@ export const TrackRow = memo(function TrackRow({
   index = 0,
   isSelected = false,
   showRank = false,
+  animateStreamIn = false,
   isPreviewPlaying = false,
   isPreviewLoading = false,
   previewProgress = 0,
@@ -73,6 +75,8 @@ export const TrackRow = memo(function TrackRow({
       onClick={() => void handleTap()}
       onKeyDown={handleRowKeyDown}
       className={`group relative flex min-h-[70px] w-full touch-pan-y cursor-pointer items-center gap-2.5 overflow-hidden rounded-2xl border px-3.5 py-3 text-left transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
+        animateStreamIn ? 'animate-track-stream-in ' : ''
+      }${
         isSelected
           ? 'border-white/[0.18] border-t-white/[0.32] bg-gradient-to-b from-[#262629] to-[#18181B] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_8px_24px_rgba(0,0,0,0.45)]'
           : 'border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] hover:border-t-white/[0.24] active:border-t-white/[0.24]'
