@@ -23,10 +23,13 @@ export interface TrackItem {
   isrc: string | null;
   spotifyUrl: string;
   preview?: string | null;
+  previewUrl?: string | null;
   source?: 'spotify' | 'deezer';
   rank?: number;
   rankChange?: number | 'NEW';
 }
+
+export type Track = TrackItem;
 
 export interface SearchApiResponse {
   tracks: TrackItem[];
@@ -45,10 +48,17 @@ export interface TrackApiResponse {
 
 export type ChartRegion = 'global' | 'sriLanka';
 
-export interface QuickTryApiResponse {
+export interface ChartSnapshot {
   global: TrackItem[];
   sriLanka: TrackItem[];
   updatedAt?: string;
+}
+
+export type QuickTryApiResponse = ChartSnapshot;
+
+export interface PreviewCacheEntry {
+  previewUrl: string | null;
+  expiresAt: number;
 }
 
 export interface CachedSearchResult {

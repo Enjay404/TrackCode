@@ -1,4 +1,9 @@
-import type { CachedSearchResult, ChartRegion, TrackItem } from '../types/track';
+import type {
+  CachedSearchResult,
+  ChartRegion,
+  PreviewCacheEntry,
+  TrackItem,
+} from '../types/track';
 
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
@@ -15,10 +20,7 @@ const MAX_PREVIEW_CACHE_ENTRIES = 120;
 
 const searchMemoryCache = new Map<string, CachedSearchResult>();
 const trackIsrcMemoryCache = new Map<string, string | null>();
-const trackPreviewMemoryCache = new Map<
-  string,
-  { previewUrl: string | null; expiresAt: number }
->();
+const trackPreviewMemoryCache = new Map<string, PreviewCacheEntry>();
 
 export function formatIsrcCode(isrc: string): string {
   return `ISRC:${isrc.trim().toUpperCase()}`;
@@ -101,10 +103,11 @@ export function getCachedSearchResult(rawQuery: string): CachedSearchResult | nu
   }
 }
 
-function stripTransientPreview(track: TrackItem): TrackItem {
-  if (!('preview' in track)) return track;
+export function stripTransientPreview(track: TrackItem): TrackItem {
+  if (!('preview' in track) && !('previewUrl' in track)) return track;
   const clean = { ...track };
   delete clean.preview;
+  delete clean.previewUrl;
   return clean;
 }
 
@@ -239,8 +242,14 @@ export function setCachedTrackPreview(cacheKey: string, previewUrl: string | nul
 
 export function cacheTrackPreviewsFromTracks(tracks: TrackItem[]): void {
   for (const track of tracks) {
-    if (typeof track.preview === 'string' && /^https?:\/\//i.test(track.preview.trim())) {
-      setCachedTrackPreview(getTrackPreviewCacheKey(track), track.preview.trim());
+    const candidate =
+      typeof track.previewUrl === 'string' && track.previewUrl.trim()
+        ? track.previewUrl.trim()
+        : typeof track.preview === 'string' && track.preview.trim()
+          ? track.preview.trim()
+          : '';
+    if (candidate && /^https?:\/\//i.test(candidate)) {
+      setCachedTrackPreview(getTrackPreviewCacheKey(track), candidate);
     }
   }
 }
@@ -267,8 +276,12 @@ export function loadCachedQuickTryCharts(): CachedQuickTryCharts {
     if (!raw) return { global: [], sriLanka: [] };
     const parsed = JSON.parse(raw) as Partial<CachedQuickTryCharts>;
     return {
-      global: Array.isArray(parsed?.global) ? (parsed.global as TrackItem[]) : [],
-      sriLanka: Array.isArray(parsed?.sriLanka) ? (parsed.sriLanka as TrackItem[]) : [],
+      global: Array.isArray(parsed?.global)
+        ? (parsed.global as TrackItem[]).map(stripTransientPreview)
+        : [],
+      sriLanka: Array.isArray(parsed?.sriLanka)
+        ? (parsed.sriLanka as TrackItem[]).map(stripTransientPreview)
+        : [],
     };
   } catch {
     return { global: [], sriLanka: [] };
@@ -352,7 +365,7 @@ export function loadRecentTracks(): TrackItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, MAX_RECENT_TRACKS) as TrackItem[];
+    return (parsed.slice(0, MAX_RECENT_TRACKS) as TrackItem[]).map(stripTransientPreview);
   } catch {
     return [];
   }
@@ -375,10 +388,9 @@ export function saveRecentTrack(track: TrackItem): TrackItem[] {
     spotifyUrl: track.spotifyUrl,
     ...(track.source ? { source: track.source } : {}),
   };
-  const deduped = [cleanTrack, ...existing.filter((item) => item.id !== cleanTrack.id)].slice(
-    0,
-    MAX_RECENT_TRACKS
-  );
+  const deduped = [cleanTrack, ...existing.filter((item) => item.id !== cleanTrack.id)]
+    .slice(0, MAX_RECENT_TRACKS)
+    .map(stripTransientPreview);
   try {
     localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(deduped));
   } catch {
