@@ -22,7 +22,7 @@ interface BottomSheetProps {
   onSearchOtherVersions: (track: TrackItem) => void;
 }
 
-const SHEET_DURATION_MS = 250;
+const SHEET_DURATION_MS = 280;
 
 export const BottomSheet = memo(function BottomSheet({
   track,
@@ -203,7 +203,7 @@ export const BottomSheet = memo(function BottomSheet({
         className="fixed inset-0 bg-black/72"
         style={{
           opacity: isOpen ? 1 : 0,
-          transition: `opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+          transition: 'opacity 220ms ease-out',
         }}
       />
 
@@ -215,12 +215,13 @@ export const BottomSheet = memo(function BottomSheet({
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
         style={{
-          transform: isOpen ? 'translate3d(0, 0, 0)' : 'translate3d(0, 105%, 0)',
+          transform: isOpen ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
           opacity: isOpen ? 1 : 0,
           backfaceVisibility: 'hidden',
           paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
-          background:
-            'linear-gradient(180deg, rgba(34, 34, 38, 0.98) 0%, rgba(24, 24, 28, 0.96) 100%)',
+          backgroundColor: '#1C1C1E',
+          backgroundImage:
+            'linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(28, 28, 30, 0) 32%)',
           borderTop: '1px solid rgba(255, 255, 255, 0.14)',
           touchAction: 'pan-x',
           transition: `transform ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity ${SHEET_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,

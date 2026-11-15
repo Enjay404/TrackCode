@@ -51,10 +51,10 @@ export function AddToHomeModal({ isOpen, isIOSInApp, onClose }: AddToHomeModalPr
             className="fixed inset-0 bg-black/80"
           />
           <motion.div
-            initial={{ opacity: 0, y: 28, scale: 0.98 }}
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 28, scale: 0.98 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 0, y: 12, scale: 0.97 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
             className="relative z-10 w-full max-w-[480px] rounded-t-[32px] border-t border-white/[0.14] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-[0_-20px_50px_rgba(0,0,0,0.85)] sm:max-w-[410px] sm:rounded-[32px] sm:border sm:border-white/[0.14] sm:pt-5 sm:pb-6 sm:shadow-[0_20px_50px_rgba(0,0,0,0.85)]"
           >

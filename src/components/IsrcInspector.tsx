@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, Copy, Disc3, Loader2, Pause, Play, Search } from 'lucide-react';
+import { ChevronDown, Copy, Loader2, Music, Pause, Play, Search } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import {
@@ -19,9 +19,9 @@ import { AcousticWaveform } from './AcousticWaveform';
 const PREVIEW_RING_RADIUS = 18.9;
 const PREVIEW_RING_CIRCUMFERENCE = 2 * Math.PI * PREVIEW_RING_RADIUS;
 
-const AUTO_COPY_RESET_MS = 750;
-const MANUAL_COPY_RESET_MS = 1000;
-const SHEET_DURATION_MS = 250;
+const AUTO_COPY_RESET_MS = 1600;
+const MANUAL_COPY_RESET_MS = 2000;
+const SHEET_DURATION_MS = 280;
 
 export interface IsrcInspectorProps {
   variant: 'desktop' | 'mobile';
@@ -58,6 +58,8 @@ export const IsrcInspector = memo(function IsrcInspector({
 }: IsrcInspectorProps) {
   const isDesktop = variant === 'desktop';
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loadedArtSrc, setLoadedArtSrc] = useState<string | null>(null);
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
   const [copiedState, setCopiedState] = useState(false);
   const [pulseCount, setPulseCount] = useState(0);
@@ -66,7 +68,15 @@ export const IsrcInspector = memo(function IsrcInspector({
   );
 
   const copyTimerRef = useRef<number | null>(null);
+  const imgLoaded = Boolean(artSrc && loadedArtSrc === artSrc);
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (artSrc && img && img.complete && img.naturalWidth > 0) {
+      setLoadedArtSrc(artSrc);
+    }
+  }, [artSrc]);
 
   useEffect(() => {
     return () => {
@@ -171,20 +181,39 @@ export const IsrcInspector = memo(function IsrcInspector({
             isDesktop ? 'h-24 w-24 rounded-2xl' : 'h-[88px] w-[88px] rounded-[14px]'
           }`}
         >
+          {artSrc && !imgLoaded && !imgError && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 overflow-hidden bg-[#2C2C2E]"
+            >
+              <div
+                className="animate-skeleton-sweep h-full w-full"
+                style={{
+                  background:
+                    'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%)',
+                }}
+              />
+            </div>
+          )}
+
           {artSrc && !imgError ? (
             <img
+              ref={imgRef}
               src={artSrc}
-              alt={track.name ? `${track.albumName || track.name} artwork` : ''}
+              alt=""
               width={isDesktop ? 96 : 88}
               height={isDesktop ? 96 : 88}
               referrerPolicy="no-referrer"
               decoding="async"
+              onLoad={() => setLoadedArtSrc(artSrc)}
               onError={() => setFailedArtSrc(artSrc)}
-              className="h-full w-full object-cover"
+              className={`h-full w-full object-cover transition-opacity duration-200 ease-out ${
+                imgLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-[#8E8E93]">
-              <Disc3 className={isDesktop ? 'h-9 w-9' : 'h-8 w-8'} />
+            <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-white/30">
+              <Music className={isDesktop ? 'h-6 w-6' : 'h-5 w-5'} aria-hidden="true" />
             </div>
           )}
 
@@ -406,7 +435,7 @@ export const IsrcInspector = memo(function IsrcInspector({
             whileTap={isFetchingIsrc ? undefined : { scale: 0.97 }}
             transition={SPRING_BUTTON}
             tabIndex={interactiveTabIndex}
-            className={`flex min-h-[50px] w-full items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none ${
+            className={`flex min-h-[50px] w-full items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] focus-visible:outline-none ${
               isFetchingIsrc
                 ? 'cursor-wait bg-white text-black opacity-60'
                 : copiedState
@@ -544,8 +573,13 @@ export const IsrcInspector = memo(function IsrcInspector({
             />
           </button>
 
-          {guideOpen && (
-            <div className="animate-card-in">
+          <div
+            aria-hidden={!guideOpen}
+            className={`grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              guideOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
               <ol className="space-y-2.5 border-t border-white/10 px-4 pb-4 pt-3 text-[13px] leading-relaxed text-[#D1D1D6]">
                 <li className="flex gap-2.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold tabular-nums text-white">
@@ -577,7 +611,7 @@ export const IsrcInspector = memo(function IsrcInspector({
                 </li>
               </ol>
             </div>
-          )}
+          </div>
         </div>
       )}
     </>

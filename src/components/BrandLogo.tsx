@@ -2,7 +2,7 @@ interface BrandLogoProps {
   className?: string;
 }
 
-export function BrandLogo({ className = 'h-[38px] sm:h-[42px]' }: BrandLogoProps) {
+export function BrandLogo({ className = 'h-[44px] sm:h-[48px]' }: BrandLogoProps) {
   return (
     <img
       src="/logo.svg"

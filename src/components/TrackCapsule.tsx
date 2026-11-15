@@ -1,5 +1,5 @@
-import { ChevronRight, Disc3, Loader2, Pause, Play } from 'lucide-react';
-import { memo, useMemo, useState } from 'react';
+import { ChevronRight, Loader2, Music, Pause, Play } from 'lucide-react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import { copyIsrcVerified, getCachedTrackIsrc } from '../utils/spotifyInput';
 
@@ -46,8 +46,18 @@ export const TrackCapsule = memo(function TrackCapsule({
   onSelect,
 }: TrackCapsuleProps) {
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loadedArtSrc, setLoadedArtSrc] = useState<string | null>(null);
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
+  const imgLoaded = Boolean(artSrc && loadedArtSrc === artSrc);
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (artSrc && img && img.complete && img.naturalWidth > 0) {
+      setLoadedArtSrc(artSrc);
+    }
+  }, [artSrc]);
 
   const cleanArtists = useMemo(() => deduplicateArtists(track.artists), [track.artists]);
   const subtitleText = track.releaseYear ? `${cleanArtists} · ${track.releaseYear}` : cleanArtists;
@@ -83,27 +93,46 @@ export const TrackCapsule = memo(function TrackCapsule({
       aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
       onKeyDown={handleRowKeyDown}
-      className={`group relative flex w-full touch-pan-y cursor-pointer items-center gap-3.5 px-3.5 py-2.5 text-left transition-colors duration-100 hover:bg-white/[0.03] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
+      className={`group relative flex w-full touch-pan-y cursor-pointer items-center gap-3.5 px-3.5 py-2.5 text-left transition-[transform,background-color] duration-150 ease-out hover:bg-white/[0.03] active:scale-[0.99] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
         isSelected ? 'bg-white/[0.05]' : ''
       }`}
     >
       {/* Refined 52x52px album artwork with 1px inner glass hairline + borderless frosted play pill */}
       <div className="relative z-10 h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[11px] bg-[#2C2C2E] after:pointer-events-none after:absolute after:inset-0 after:rounded-[11px] after:ring-1 after:ring-inset after:ring-white/[0.12] after:content-['']">
+        {artSrc && !imgLoaded && !imgError && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-hidden bg-[#2C2C2E]"
+          >
+            <div
+              className="animate-skeleton-sweep h-full w-full"
+              style={{
+                background:
+                  'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%)',
+              }}
+            />
+          </div>
+        )}
+
         {artSrc && !imgError ? (
           <img
+            ref={imgRef}
             src={artSrc}
-            alt={`${track.albumName || track.name} cover`}
+            alt=""
             width={52}
             height={52}
             referrerPolicy="no-referrer"
             loading="lazy"
             decoding="async"
+            onLoad={() => setLoadedArtSrc(artSrc)}
             onError={() => setFailedArtSrc(artSrc)}
-            className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.03]"
+            className={`h-full w-full object-cover transition-[opacity,transform] duration-200 ease-out group-hover:scale-[1.03] ${
+              imgLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-[#8E8E93]">
-            <Disc3 className="h-5 w-5" />
+          <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-white/30">
+            <Music className="h-5 w-5" aria-hidden="true" />
           </div>
         )}
 
@@ -158,13 +187,27 @@ export const TrackCapsule = memo(function TrackCapsule({
                     )}
                   </svg>
                 )}
-                {isPreviewLoading ? (
-                  <Loader2 className="relative h-3 w-3 animate-spin text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
-                ) : isPreviewPlaying ? (
-                  <Pause className="relative h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
-                ) : (
-                  <Play className="relative ml-[1px] h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]" />
-                )}
+                <span className="relative flex h-3 w-3 items-center justify-center">
+                  <Loader2
+                    className={`absolute h-3 w-3 animate-spin text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-[opacity,transform] duration-150 ease-out ${
+                      isPreviewLoading ? 'scale-100 opacity-100' : 'scale-75 opacity-0'
+                    }`}
+                  />
+                  <Pause
+                    className={`absolute h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-[opacity,transform] duration-150 ease-out ${
+                      !isPreviewLoading && isPreviewPlaying
+                        ? 'scale-100 opacity-100'
+                        : 'scale-75 opacity-0'
+                    }`}
+                  />
+                  <Play
+                    className={`absolute ml-[1px] h-2.5 w-2.5 fill-white text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)] transition-[opacity,transform] duration-150 ease-out ${
+                      !isPreviewLoading && !isPreviewPlaying
+                        ? 'scale-100 opacity-100'
+                        : 'scale-75 opacity-0'
+                    }`}
+                  />
+                </span>
               </span>
             </button>
           </div>

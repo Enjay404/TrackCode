@@ -103,22 +103,24 @@ export const DesktopInspectorCard = memo(function DesktopInspectorCard({
         }}
       />
 
-      <IsrcInspector
-        variant="desktop"
-        track={track}
-        copiedSignal={copiedSignal}
-        isActive={true}
-        isFetchingIsrc={isFetchingIsrc}
-        previewUrl={previewUrl}
-        isAudioPlaying={isAudioPlaying}
-        isAudioLoading={isAudioLoading}
-        audioProgress={audioProgress}
-        getAudioGainMultiplier={getAudioGainMultiplier}
-        onTogglePreview={onTogglePreview}
-        onCopied={onCopied}
-        onCopyFailed={onCopyFailed}
-        onSearchOtherVersions={onSearchOtherVersions}
-      />
+      <div key={track.id} className="animate-inspector-settle">
+        <IsrcInspector
+          variant="desktop"
+          track={track}
+          copiedSignal={copiedSignal}
+          isActive={true}
+          isFetchingIsrc={isFetchingIsrc}
+          previewUrl={previewUrl}
+          isAudioPlaying={isAudioPlaying}
+          isAudioLoading={isAudioLoading}
+          audioProgress={audioProgress}
+          getAudioGainMultiplier={getAudioGainMultiplier}
+          onTogglePreview={onTogglePreview}
+          onCopied={onCopied}
+          onCopyFailed={onCopyFailed}
+          onSearchOtherVersions={onSearchOtherVersions}
+        />
+      </div>
     </aside>
   );
 });

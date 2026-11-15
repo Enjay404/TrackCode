@@ -1,4 +1,5 @@
 import { toPng } from 'html-to-image';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowDown,
   ArrowRight,
@@ -1678,62 +1679,78 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
         ? 'translate3d(100%, 0, 0)'
         : 'translate3d(200%, 0, 0)';
 
-  const fullscreenModal = activeFullscreenSlide ? (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090B] p-3 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Fullscreen 4:5 slide: ${activeFullscreenSlide.headline}`}
-      onClick={() => setFullscreenSlideId(null)}
-    >
-      {!isCleanMode && (
-        <div
-          className="fixed top-[calc(env(safe-area-inset-top,0px)+12px)] right-4 z-20 flex items-center gap-2"
-          onClick={(e) => e.stopPropagation()}
+  const fullscreenModal = (
+    <AnimatePresence>
+      {activeFullscreenSlide && (
+        <motion.div
+          key={activeFullscreenSlide.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#09090B] p-3 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-[calc(env(safe-area-inset-bottom,0px)+12px)] sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Fullscreen 4:5 slide: ${activeFullscreenSlide.headline}`}
+          onClick={() => setFullscreenSlideId(null)}
         >
-          <button
-            type="button"
-            onClick={() => setIsCleanMode(true)}
-            className="liquid-glass-pill flex h-10 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium text-white/85 transition-colors hover:text-white active:scale-[0.96]"
-          >
-            <EyeOff className="h-3.5 w-3.5 text-[#30D158]" />
-            <span>Hide Controls</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFullscreenSlideId(null)}
-            aria-label="Close fullscreen slide"
-            className="liquid-glass-pill flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-white/85 transition-colors hover:text-white active:scale-[0.94]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+          {!isCleanMode && (
+            <div
+              className="fixed top-[calc(env(safe-area-inset-top,0px)+12px)] right-4 z-20 flex items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setIsCleanMode(true)}
+                className="liquid-glass-pill flex h-10 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium text-white/85 transition-[transform,color] duration-150 hover:text-white active:scale-[0.96]"
+              >
+                <EyeOff className="h-3.5 w-3.5 text-[#30D158]" />
+                <span>Hide Controls</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFullscreenSlideId(null)}
+                aria-label="Close fullscreen slide"
+                className="liquid-glass-pill flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-white/85 transition-[transform,color] duration-150 hover:text-white active:scale-[0.94]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          transform: `scale(${fullscreenScale})`,
-          transformOrigin: 'center center',
-        }}
-      >
-        <StorySlideCard
-          id={`${activeFullscreenSlide.id}-fullscreen`}
-          badge={activeFullscreenSlide.badge}
-          headline={activeFullscreenSlide.headline}
-          subtext={activeFullscreenSlide.subtext}
-          subtextItalic={activeFullscreenSlide.subtextItalic}
-          glowStyle={activeFullscreenSlide.glowStyle}
-          paddingClass={activeFullscreenSlide.paddingClass}
-          customHeader={activeFullscreenSlide.customHeader}
-          customLayout={activeFullscreenSlide.customLayout}
-          bottomSlot={activeFullscreenSlide.bottomSlot}
-        >
-          {activeFullscreenSlide.content}
-        </StorySlideCard>
-      </div>
-    </div>
-  ) : null;
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                transform: `scale(${fullscreenScale})`,
+                transformOrigin: 'center center',
+              }}
+            >
+              <StorySlideCard
+                id={`${activeFullscreenSlide.id}-fullscreen`}
+                badge={activeFullscreenSlide.badge}
+                headline={activeFullscreenSlide.headline}
+                subtext={activeFullscreenSlide.subtext}
+                subtextItalic={activeFullscreenSlide.subtextItalic}
+                glowStyle={activeFullscreenSlide.glowStyle}
+                paddingClass={activeFullscreenSlide.paddingClass}
+                customHeader={activeFullscreenSlide.customHeader}
+                customLayout={activeFullscreenSlide.customLayout}
+                bottomSlot={activeFullscreenSlide.bottomSlot}
+              >
+                {activeFullscreenSlide.content}
+              </StorySlideCard>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className="relative min-h-[100dvh] bg-[#09090B] text-white">
@@ -1752,12 +1769,12 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
 
       {/* Top Navigation Bar (Hidden in Screenshot View) */}
       {!isCleanMode && (
-        <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#09090B]/95 pt-[env(safe-area-inset-top,0px)]">
+        <header className="animate-fade-up sticky top-0 z-30 border-b border-white/[0.08] bg-[#09090B]/95 pt-[env(safe-area-inset-top,0px)]">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2.5 px-4 py-3 sm:px-6">
             <a
               href="/"
               onClick={handleBackClick}
-              className="liquid-glass inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.1] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+              className="liquid-glass inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white transition-[transform,background-color] duration-150 hover:bg-white/[0.1] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
             >
               <ArrowLeft className="h-4 w-4 text-[#AEAEB2]" />
               <span>Back to TrackCode</span>
@@ -1767,7 +1784,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
               <button
                 type="button"
                 onClick={() => void handleCopyGuideLink()}
-                className="liquid-glass inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.1] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                className="liquid-glass inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium text-white transition-[transform,background-color] duration-150 hover:bg-white/[0.1] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
               >
                 {linkCopied ? (
                   <>
@@ -1787,7 +1804,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                 type="button"
                 onClick={() => setIsCleanMode(true)}
                 aria-pressed={isCleanMode}
-                className="inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.16] bg-white/[0.08] px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-white/[0.14] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+                className="inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 rounded-full border border-white/[0.16] bg-white/[0.08] px-3.5 py-2 text-[13px] font-semibold text-white transition-[transform,background-color] duration-150 hover:bg-white/[0.14] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
               >
                 <Eye className="h-3.5 w-3.5 text-[#30D158]" />
                 <span>Screenshot View</span>
@@ -1802,7 +1819,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
         <button
           type="button"
           onClick={() => setIsCleanMode(false)}
-          className="liquid-glass-pill fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] z-40 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium text-white/80 opacity-65 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+          className="animate-modal-pop liquid-glass-pill fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] z-40 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium text-white/80 opacity-75 transition-[opacity,transform] duration-150 hover:opacity-100 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
         >
           <EyeOff className="h-3.5 w-3.5 text-[#30D158]" />
           <span>Exit Screenshot View</span>
@@ -1816,7 +1833,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
       >
         {/* Guide Intro Header & 3-Segment Tab Switcher (Hidden in Screenshot View) */}
         {!isCleanMode && (
-          <section className="mx-auto mb-9 max-w-2xl px-2 text-center sm:px-0">
+          <section className="animate-modal-pop mx-auto mb-9 max-w-2xl px-2 text-center sm:px-0">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#AEAEB2]">
               <Sparkles className="h-3 w-3 text-[#30D158]" />
               <span>1080×1350 Feed &amp; Carousel Studio</span>
@@ -1888,6 +1905,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
 
         {/* 5 Vertical 4:5 Studio Cards */}
         <section
+          key={activeTab}
           aria-label={
             activeTab === 'guide'
               ? 'Step-by-step 4:5 guide cards'
@@ -1895,7 +1913,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
                 ? 'Promotional 4:5 cards'
                 : 'Instagram 4:5 post cards'
           }
-          className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-10"
+          className="animate-modal-pop grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-10"
         >
           {visibleSlides.map((slide) => {
             const isExporting = exportingId === slide.id;
@@ -1968,7 +1986,7 @@ export function GuidePage({ onNavigate }: GuidePageProps) {
 
       {!isCleanMode && <FooterDock />}
 
-      {typeof document !== 'undefined' && fullscreenModal
+      {typeof document !== 'undefined'
         ? createPortal(fullscreenModal, document.body)
         : null}
     </div>

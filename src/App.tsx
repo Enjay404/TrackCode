@@ -114,7 +114,7 @@ const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
           transform:
             region === 'global' ? 'translate3d(0%, 0, 0)' : 'translate3d(100%, 0, 0)',
         }}
-        className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[250ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
       />
 
       <button
@@ -217,7 +217,8 @@ const TrackListSection = memo(function TrackListSection({
       ) : (
         <div className="overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
           <div
-            className={`touch-pan-y ${
+            key={listKeyPrefix ?? 'static'}
+            className={`touch-pan-y ${listKeyPrefix ? 'animate-fade-up ' : ''}${
               isExpandedScroll
                 ? 'trackcode-scroll max-h-[410px] overflow-y-auto overscroll-contain md:max-h-[460px]'
                 : ''
@@ -1381,7 +1382,7 @@ function TrackCodeWorkspace() {
         <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-1 pb-3 lg:px-0 lg:pt-8 lg:pb-6">
           <h1 className="flex items-center">
             <span className="sr-only">TrackCode — ISRC Finder</span>
-            <BrandLogo className="h-[38px] sm:h-[42px]" />
+            <BrandLogo className="h-[44px] sm:h-[48px]" />
           </h1>
 
           <div className="flex items-center gap-2 lg:gap-3">
@@ -1460,52 +1461,64 @@ function TrackCodeWorkspace() {
                     )}
                   </div>
 
-                  {query.length === 0 ? (
-                    <div className="mr-2 flex shrink-0 items-center gap-2">
-                      <kbd
-                        aria-hidden="true"
-                        className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                  <AnimatePresence mode="wait" initial={false}>
+                    {query.length === 0 ? (
+                      <motion.div
+                        key="paste-action"
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.92 }}
+                        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                        className="mr-2 flex shrink-0 items-center gap-2"
                       >
-                        ⌘K
-                      </kbd>
-                      <motion.button
-                        type="button"
-                        onClick={() => void handlePasteFromClipboard()}
-                        whileTap={{ scale: 0.97 }}
-                        transition={SPRING_BUTTON}
-                        className="flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white active:bg-white/[0.2]"
+                        <kbd
+                          aria-hidden="true"
+                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                        >
+                          ⌘K
+                        </kbd>
+                        <button
+                          type="button"
+                          onClick={() => void handlePasteFromClipboard()}
+                          className="flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white transition-[opacity,transform,background-color] duration-150 hover:bg-white/[0.16] active:scale-95 active:bg-white/[0.2]"
+                        >
+                          <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
+                          <span>Paste</span>
+                        </button>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="clear-action"
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.92 }}
+                        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                        className="mr-0.5 flex shrink-0 items-center gap-1 lg:mr-1.5"
                       >
-                        <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
-                        <span>Paste</span>
-                      </motion.button>
-                    </div>
-                  ) : (
-                    <div className="mr-0.5 flex shrink-0 items-center gap-1 lg:mr-1.5">
-                      <kbd
-                        aria-hidden="true"
-                        className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
-                      >
-                        ⌘K
-                      </kbd>
-                      <motion.button
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleClearInput();
-                        }}
-                        whileTap={{ scale: 0.94 }}
-                        transition={SPRING_BUTTON}
-                        aria-label="Clear search"
-                        className="relative z-20 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] active:bg-white/10 focus-visible:outline-none"
-                      >
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
-                          <X className="h-3.5 w-3.5 stroke-[2.6]" />
-                        </span>
-                      </motion.button>
-                    </div>
-                  )}
+                        <kbd
+                          aria-hidden="true"
+                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                        >
+                          ⌘K
+                        </kbd>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClearInput();
+                          }}
+                          aria-label="Clear search"
+                          className="relative z-20 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] transition-[opacity,transform,background-color] duration-150 active:scale-95 active:bg-white/10 focus-visible:outline-none"
+                        >
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
+                            <X className="h-3.5 w-3.5 stroke-[2.6]" />
+                          </span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </form>
               </div>
 
@@ -1610,7 +1623,7 @@ function TrackCodeWorkspace() {
                     )}
 
                     {!isLoading && !errorMessage && results.length > 0 && (
-                      <section aria-label="Search results" className="pt-1 lg:pt-0">
+                      <section key={trimmedQuery} aria-label="Search results" className="animate-fade-up pt-1 lg:pt-0">
                         <div className="flex items-center justify-between px-1 pb-2">
                           <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
                             {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}
