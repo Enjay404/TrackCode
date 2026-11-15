@@ -7,7 +7,7 @@
 
   html,
   body {
-    background-color: #000000;
+    background-color: #09090B;
     color: #ffffff;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -432,6 +432,25 @@
   will-change: transform, opacity;
 }
 
+@keyframes search-sheen {
+  0%, 68% {
+    transform: translate3d(-120%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+  74% {
+    opacity: 1;
+  }
+  92%, 100% {
+    transform: translate3d(260%, 0, 0) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+.animate-search-sheen {
+  animation: search-sheen 5.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform, opacity;
+}
+
 .trackcode-scroll {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
@@ -475,7 +494,8 @@
   .animate-track-stream-in,
   .animate-fade-up,
   .animate-inspector-settle,
-  .animate-modal-pop {
+  .animate-modal-pop,
+  .animate-search-sheen {
     animation: none;
   }
 
@@ -494,6 +514,7 @@
   .trackcode-isrc-shimmer,
   .animate-promo-sweep,
   .animate-skeleton-sweep,
+  .animate-search-sheen,
   .group:hover .trackcode-sweep-hover {
     display: none;
     transition: none;

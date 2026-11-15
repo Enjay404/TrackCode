@@ -417,6 +417,7 @@ function TrackCodeWorkspace() {
   const activeInspectTrackRef = useRef<TrackItem | null>(null);
   const [isLastCopiedSuccess, setIsLastCopiedSuccess] = useState(false);
   const lastCopiedTimerRef = useRef<number | null>(null);
+  const [isPageScrolled, setIsPageScrolled] = useState(false);
 
   const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
@@ -672,10 +673,19 @@ function TrackCodeWorkspace() {
         }
       });
 
-    // Warm up lazy mobile BottomSheet chunk after initial paint on smaller viewports
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const nextScrolled = window.scrollY > 12;
+      setIsPageScrolled((prev) => (prev === nextScrolled ? prev : nextScrolled));
+    };
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
@@ -1424,20 +1434,22 @@ function TrackCodeWorkspace() {
   );
 
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-black pb-12 text-white">
-      {/* Top Status-Bar / Dynamic Island Fade Shield (zero backdrop-filter) */}
+    <div className="relative min-h-dvh overflow-x-clip bg-[#09090B] pb-8 text-white">
+      {/* Top Status-Bar / Dynamic Island Fade Shield when scrolled (zero backdrop-filter) */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+16px)] bg-gradient-to-b from-[#09090B] via-[#09090B]/95 to-transparent lg:hidden"
+        className={`pointer-events-none fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+16px)] bg-gradient-to-b from-[#09090B] via-[#09090B]/90 to-transparent transition-opacity duration-200 lg:hidden ${
+          isPageScrolled ? 'opacity-100' : 'opacity-0'
+        }`}
       />
 
       <DynamicIslandToast toast={toast} />
 
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-black pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0">
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-transparent pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0">
         {/* Breathing Ambient Background Glow behind top ~35% (pure CSS GPU animation) */}
         <div
           aria-hidden="true"
-          className="animate-ambient-breathe pointer-events-none absolute inset-x-0 top-0 z-0 h-[42vh]"
+          className="animate-ambient-breathe pointer-events-none fixed inset-x-0 top-0 z-0 h-[44vh]"
           style={{
             transformOrigin: '50% 18%',
             background:
@@ -1471,30 +1483,43 @@ function TrackCodeWorkspace() {
         </header>
 
         {/* Main Content Workspace: Single-Column Mobile / 12-Col Two-Column Split Desktop */}
-        <main className="relative z-10 flex-1 pb-24 lg:pb-4">
+        <main className="relative z-10 flex-1 pb-4">
           <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-7">
             {/* Left Column (Desktop col-span-7) / Mobile Full Column */}
             <div className="lg:col-span-7">
-              {/* iOS 26 Liquid Glass Search Capsule (Sticky on Mobile over solid #09090B safe-area bar, Static on Desktop) */}
-              <div className="sticky top-0 z-20 bg-[#09090B] px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-2.5 lg:static lg:mb-5 lg:bg-transparent lg:px-0 lg:py-0">
+              {/* Hero Search Capsule (Sticky on Mobile, seamless gradient backdrop when scrolled, Static on Desktop) */}
+              <div
+                className={`sticky top-0 z-20 px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-2.5 transition-colors duration-200 lg:static lg:mb-4 lg:bg-transparent lg:px-0 lg:py-0 ${
+                  isPageScrolled ? 'bg-[#09090B]' : 'bg-transparent'
+                }`}
+              >
                 <form
                   onSubmit={handleSearchSubmit}
-                  className="group relative flex h-[48px] items-center gap-2.5 overflow-hidden rounded-[16px] border border-white/[0.09] border-t-white/[0.24] border-b-white/[0.05] bg-gradient-to-b from-[#26262A] via-[#1C1C1F] to-[#151517] px-3.5 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.20),inset_0_-1px_1px_rgba(0,0,0,0.55),0_12px_30px_rgba(0,0,0,0.50)] transition-[border-color,box-shadow,transform] duration-200 ease-out before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/35 before:to-transparent before:content-[''] focus-within:border-white/[0.18] focus-within:border-t-white/[0.42] focus-within:ring-4 focus-within:ring-white/[0.05] focus-within:shadow-[inset_0_1px_1px_rgba(255,255,255,0.28),0_14px_34px_rgba(0,0,0,0.65)]"
+                  className="group relative flex h-[56px] sm:h-[60px] items-center gap-3 rounded-[20px] border border-white/[0.12] border-t-white/[0.22] bg-[#1C1C1E] px-4 shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_0_1px_rgba(48,209,88,0.06)] transition-[border-color,background-color] duration-200 focus-within:border-white/[0.26] focus-within:bg-[#222225]"
                 >
-                  <span className="pointer-events-none flex h-4 w-4 shrink-0 items-center justify-center">
+                  {query.length === 0 && (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 overflow-hidden rounded-[20px] group-focus-within:hidden"
+                    >
+                      <div className="animate-search-sheen h-full w-1/3 bg-gradient-to-r from-transparent via-white/[0.07] to-transparent" />
+                    </div>
+                  )}
+
+                  <span className="pointer-events-none relative z-10 flex h-5 w-5 shrink-0 items-center justify-center">
                     {isLoading ? (
                       <Loader2
-                        className="h-[15px] w-[15px] animate-spin text-white/65"
+                        className="h-[18px] w-[18px] animate-spin text-white/65"
                         aria-hidden="true"
                       />
                     ) : isLinkMode ? (
                       <Link2
-                        className="h-4 w-4 text-[#30D158] transition-colors duration-200"
+                        className="h-5 w-5 text-[#30D158] transition-colors duration-200"
                         aria-hidden="true"
                       />
                     ) : (
                       <Search
-                        className="h-4 w-4 text-white/40 transition-colors duration-200 group-focus-within:text-white/80"
+                        className="h-5 w-5 text-white/60 transition-colors duration-200 group-focus-within:text-white/85"
                         aria-hidden="true"
                       />
                     )}
@@ -1512,7 +1537,7 @@ function TrackCodeWorkspace() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Song, artist, or Spotify link"
                     aria-label="Search song, artist, or Spotify link"
-                    className="min-w-0 flex-1 touch-manipulation bg-transparent text-[16px] sm:text-[15px] font-normal tracking-[-0.01em] text-white placeholder:text-white/38 outline-none focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                    className="relative z-10 min-w-0 flex-1 touch-manipulation bg-transparent text-[16px] font-medium tracking-[-0.01em] text-white placeholder:text-white/45 outline-none focus:outline-none [&::-webkit-search-cancel-button]:hidden"
                   />
 
                   <AnimatePresence mode="wait" initial={false}>
@@ -1523,7 +1548,7 @@ function TrackCodeWorkspace() {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.92 }}
                         transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                        className="flex shrink-0 items-center gap-2"
+                        className="relative z-10 flex shrink-0 items-center gap-2"
                       >
                         <kbd
                           aria-hidden="true"
@@ -1534,7 +1559,7 @@ function TrackCodeWorkspace() {
                         <button
                           type="button"
                           onClick={() => void handlePasteFromClipboard()}
-                          className="flex h-[31px] shrink-0 touch-manipulation cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#30D158]/[0.28] border-t-[#30D158]/[0.48] bg-gradient-to-b from-[#30D158]/[0.24] to-[#30D158]/[0.12] px-3 text-[12.5px] font-semibold tracking-[-0.01em] text-[#34E060] shadow-[inset_0_1px_0_rgba(255,255,255,0.20),0_2px_10px_rgba(48,209,88,0.16)] transition-[background,transform,box-shadow] duration-150 hover:from-[#30D158]/[0.32] hover:to-[#30D158]/[0.18] active:scale-95"
+                          className="flex h-[38px] shrink-0 touch-manipulation cursor-pointer items-center gap-1.5 rounded-[13px] border border-[#30D158]/[0.28] border-t-[#30D158]/[0.48] bg-gradient-to-b from-[#30D158]/[0.24] to-[#30D158]/[0.12] px-3.5 text-[13px] font-semibold tracking-[-0.01em] text-[#34E060] shadow-[inset_0_1px_0_rgba(255,255,255,0.20),0_2px_10px_rgba(48,209,88,0.16)] transition-[background,transform,box-shadow] duration-150 hover:from-[#30D158]/[0.32] hover:to-[#30D158]/[0.18] active:scale-95"
                         >
                           <ClipboardPaste className="h-3.5 w-3.5" aria-hidden="true" />
                           <span>Paste</span>
@@ -1717,58 +1742,50 @@ function TrackCodeWorkspace() {
                   </>
                 ) : (
                   <div className="space-y-5 pt-1 lg:pt-0">
-                    {/* Unified #1C1C1E Last Copied Quick-Recopy Capsule */}
+                    {/* Slim, Low-Profile Last Copied Utility Strip */}
                     {lastCopiedTrack?.isrc && (
                       <section aria-label="Last copied ISRC">
                         <button
                           type="button"
                           onClick={() => void handleQuickCopyLast()}
                           aria-label={`Re-copy ${formatIsrcCode(lastCopiedTrack.isrc)}`}
-                          className="group flex w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[16px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] px-3.5 py-2.5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] transition-[background-color,transform] duration-150 hover:bg-[#222225] active:scale-[0.99] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                          className="group flex h-[36px] w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-white/[0.06] bg-[#141416] px-3.5 transition-[border-color,transform] duration-150 hover:border-white/[0.11] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                         >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span
-                              aria-hidden="true"
-                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#30D158] shadow-[0_0_6px_rgba(48,209,88,0.6)]"
-                            />
-                            <span className="truncate text-[12.5px] font-medium tracking-[-0.01em] text-white/55">
-                              Last copied
-                            </span>
+                          <span className="truncate text-[12px] font-medium text-white/40">
+                            Last copied
                           </span>
-                          <span className="flex shrink-0 items-center gap-2 rounded-[8px] border border-white/[0.07] bg-white/[0.05] px-2.5 py-1">
-                            <AnimatePresence mode="wait" initial={false}>
-                              {isLastCopiedSuccess ? (
-                                <motion.span
-                                  key="copied"
-                                  initial={{ opacity: 0, scale: 0.92 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.92 }}
-                                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold tracking-[-0.01em] text-[#30D158]"
-                                >
-                                  <Check className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" aria-hidden="true" />
-                                  <span>Copied</span>
-                                </motion.span>
-                              ) : (
-                                <motion.span
-                                  key="code"
-                                  initial={{ opacity: 0, scale: 0.92 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.92 }}
-                                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                                  className="inline-flex items-center gap-2"
-                                >
-                                  <span className="font-mono whitespace-nowrap text-[12px] font-medium tracking-[0.02em] text-white/90">
-                                    {formatIsrcCode(lastCopiedTrack.isrc)}
-                                  </span>
-                                  <Copy
-                                    className="h-3.5 w-3.5 shrink-0 text-white/55 transition-colors duration-150 group-hover:text-white/85"
-                                    aria-hidden="true"
-                                  />
-                                </motion.span>
-                              )}
-                            </AnimatePresence>
-                          </span>
+                          <AnimatePresence mode="wait" initial={false}>
+                            {isLastCopiedSuccess ? (
+                              <motion.span
+                                key="copied"
+                                initial={{ opacity: 0, scale: 0.94 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.94 }}
+                                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                                className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-[#30D158]"
+                              >
+                                <Check className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" aria-hidden="true" />
+                                <span>Copied</span>
+                              </motion.span>
+                            ) : (
+                              <motion.span
+                                key="code"
+                                initial={{ opacity: 0, scale: 0.94 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.94 }}
+                                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                                className="inline-flex shrink-0 items-center gap-2"
+                              >
+                                <span className="font-mono whitespace-nowrap text-[12.5px] tracking-wide text-white/75">
+                                  {formatIsrcCode(lastCopiedTrack.isrc)}
+                                </span>
+                                <Copy
+                                  className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105"
+                                  aria-hidden="true"
+                                />
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
                         </button>
                       </section>
                     )}

@@ -3,7 +3,7 @@ import { memo } from 'react';
 export const FooterDock = memo(function FooterDock() {
   return (
     <footer
-      className="fixed bottom-0 inset-x-0 z-20 flex justify-center pointer-events-none px-3 pt-6 pb-[max(14px,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/95 via-black/60 to-transparent lg:static lg:mt-10 lg:bg-none lg:px-0 lg:pt-2 lg:pb-8 lg:pointer-events-auto"
+      className="mt-6 flex justify-center px-3 pt-1 pb-[max(16px,env(safe-area-inset-bottom))] lg:mt-10 lg:px-0 lg:pt-2 lg:pb-8"
       style={{ contain: 'layout style' }}
     >
       <div className="flex max-w-full items-center justify-center gap-2">
