@@ -1,5 +1,5 @@
 import { ChevronRight, Loader2, Music, Pause, Play } from 'lucide-react';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { TrackItem } from '../types/track';
 import { copyIsrcVerified, getCachedTrackIsrc } from '../utils/spotifyInput';
 
@@ -26,6 +26,8 @@ export function deduplicateArtists(rawArtists: string): string {
 export interface TrackCapsuleProps {
   track: TrackItem;
   index?: number;
+  className?: string;
+  style?: CSSProperties;
   isSelected?: boolean;
   showRank?: boolean;
   isPreviewPlaying?: boolean;
@@ -37,6 +39,8 @@ export interface TrackCapsuleProps {
 
 export const TrackCapsule = memo(function TrackCapsule({
   track,
+  className = '',
+  style,
   isSelected = false,
   showRank = false,
   isPreviewPlaying = false,
@@ -91,11 +95,12 @@ export const TrackCapsule = memo(function TrackCapsule({
       tabIndex={0}
       data-track-id={track.id}
       aria-current={isSelected ? 'true' : undefined}
+      style={style}
       onClick={() => void handleTap()}
       onKeyDown={handleRowKeyDown}
       className={`group relative flex w-full touch-manipulation cursor-pointer items-center gap-3.5 px-3.5 py-2.5 text-left transition-colors duration-100 hover:bg-white/[0.03] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
         isSelected ? 'bg-white/[0.05]' : ''
-      }`}
+      } ${className}`}
     >
       {/* Refined 52x52px album artwork with 1px inner glass hairline + borderless frosted play pill */}
       <div className="relative z-10 h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[11px] bg-[#2C2C2E] after:pointer-events-none after:absolute after:inset-0 after:rounded-[11px] after:ring-1 after:ring-inset after:ring-white/[0.12] after:content-['']">

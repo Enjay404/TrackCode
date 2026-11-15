@@ -3,7 +3,6 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   Check,
   ChevronDown,
-  ChevronUp,
   ClipboardPaste,
   Copy,
   Globe,
@@ -105,10 +104,12 @@ function useIsDesktop(): boolean {
 const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
   activeTabPill,
   onTabPress,
+  onTabCancel,
   onChange,
 }: {
   activeTabPill: ChartRegion;
   onTabPress: (next: ChartRegion) => void;
+  onTabCancel: () => void;
   onChange: (next: ChartRegion) => void;
 }) {
   return (
@@ -131,6 +132,7 @@ const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
         role="tab"
         aria-selected={activeTabPill === 'global'}
         onPointerDown={() => onTabPress('global')}
+        onPointerCancel={onTabCancel}
         onClick={() => onChange('global')}
         className={`relative z-10 flex min-h-[36px] touch-manipulation cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
           activeTabPill === 'global'
@@ -147,6 +149,7 @@ const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
         role="tab"
         aria-selected={activeTabPill === 'sriLanka'}
         onPointerDown={() => onTabPress('sriLanka')}
+        onPointerCancel={onTabCancel}
         onClick={() => onChange('sriLanka')}
         className={`relative z-10 flex min-h-[36px] touch-manipulation cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
           activeTabPill === 'sriLanka'
@@ -175,6 +178,8 @@ interface TrackListSectionProps {
   audioProgress?: number;
   showRanks?: boolean;
   isLoading?: boolean;
+  isStreamingMore?: boolean;
+  animateFromIndex?: number | null;
   skeletonCount?: number;
   onTogglePreview?: (track: TrackItem) => void;
   onSelect: (track: TrackItem, copied: boolean) => void;
@@ -195,6 +200,8 @@ const TrackListSection = memo(function TrackListSection({
   audioProgress = 0,
   showRanks = false,
   isLoading = false,
+  isStreamingMore = false,
+  animateFromIndex = null,
   skeletonCount = 4,
   onTogglePreview,
   onSelect,
@@ -231,6 +238,8 @@ const TrackListSection = memo(function TrackListSection({
           >
             {tracks.map((track, index) => {
               const isThisActive = playingTrackId === track.id;
+              const shouldAnimateIn =
+                animateFromIndex !== null && index >= animateFromIndex;
               return (
                 <Fragment key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}>
                   {index > 0 && (
@@ -242,6 +251,12 @@ const TrackListSection = memo(function TrackListSection({
                   <TrackCapsule
                     track={track}
                     index={index}
+                    className={shouldAnimateIn ? 'animate-track-stream-in' : undefined}
+                    style={
+                      index >= 15
+                        ? { contentVisibility: 'auto', containIntrinsicSize: 'auto 73px' }
+                        : undefined
+                    }
                     isSelected={selectedTrackId === track.id}
                     showRank={showRanks}
                     isPreviewPlaying={isThisActive && !isAudioLoading}
@@ -253,6 +268,20 @@ const TrackListSection = memo(function TrackListSection({
                 </Fragment>
               );
             })}
+            {isStreamingMore && (
+              <div aria-hidden="true">
+                {tracks.length > 0 && (
+                  <div className="ml-[78px] mr-4 h-px scale-y-50 bg-white/[0.08]" />
+                )}
+                <div className="flex items-center gap-3.5 px-3.5 py-2.5">
+                  <div className="skeleton-shimmer h-[52px] w-[52px] shrink-0 rounded-[11px]" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="skeleton-shimmer h-3.5 w-3/5 rounded-md" />
+                    <div className="skeleton-shimmer h-3 w-2/5 rounded-md" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           {footerControl}
         </div>
@@ -343,7 +372,9 @@ function deriveApiStatus(meta: {
   };
 }
 
-const MAX_CHART_TRACKS = 25;
+const MAX_CHART_TRACKS = 50;
+const INITIAL_CHART_COUNT = 5;
+const CHART_EXPAND_STEP = 15;
 
 function mergeChartTracks(existing: TrackItem[], incoming: TrackItem[]): TrackItem[] {
   const seenIds = new Set<string>();
@@ -381,13 +412,20 @@ function TrackCodeWorkspace() {
 
   const [popularRegion, setPopularRegion] = useState<ChartRegion>('global');
   const [activeTabPill, setActiveTabPill] = useState<ChartRegion>('global');
+  const activeRegionRef = useRef<ChartRegion>('global');
   const [, startRegionTransition] = useTransition();
-  const [showAllHits, setShowAllHits] = useState(false);
+  const [visibleCountByRegion, setVisibleCountByRegion] = useState<Record<ChartRegion, number>>({
+    global: INITIAL_CHART_COUNT,
+    sriLanka: INITIAL_CHART_COUNT,
+  });
+  const [streamTargetCount, setStreamTargetCount] = useState<number | null>(null);
+  const [animateNewFromIndex, setAnimateNewFromIndex] = useState<number | null>(null);
   const [isStreamingMore, setIsStreamingMore] = useState(false);
   const [loadedFullRegions, setLoadedFullRegions] = useState<Record<ChartRegion, boolean>>({
     global: false,
     sriLanka: false,
   });
+  const hasStreamedSessionRef = useRef(false);
   const [quickTryCharts, setQuickTryCharts] = useState(() => loadCachedQuickTryCharts());
   const quickTryChartsRef = useRef(quickTryCharts);
   quickTryChartsRef.current = quickTryCharts;
@@ -397,9 +435,10 @@ function TrackCodeWorkspace() {
   });
   const activeQuickTryTracks =
     popularRegion === 'global' ? quickTryCharts.global : quickTryCharts.sriLanka;
+  const activeVisibleCount = visibleCountByRegion[popularRegion];
   const displayedQuickTryTracks = useMemo(
-    () => (showAllHits ? activeQuickTryTracks : activeQuickTryTracks.slice(0, 5)),
-    [activeQuickTryTracks, showAllHits]
+    () => activeQuickTryTracks.slice(0, activeVisibleCount),
+    [activeQuickTryTracks, activeVisibleCount]
   );
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
@@ -518,8 +557,13 @@ function TrackCodeWorkspace() {
     setActiveTabPill(nextRegion);
   }, []);
 
+  const handleRegionPillCancel = useCallback(() => {
+    setActiveTabPill(activeRegionRef.current);
+  }, []);
+
   const handleRegionChange = useCallback(
     (nextRegion: ChartRegion) => {
+      activeRegionRef.current = nextRegion;
       setActiveTabPill(nextRegion);
       if (nextRegion === popularRegion) return;
       if (streamAbortRef.current) {
@@ -527,28 +571,34 @@ function TrackCodeWorkspace() {
         streamAbortRef.current = null;
       }
       setIsStreamingMore(false);
+      setStreamTargetCount(null);
+      setAnimateNewFromIndex(null);
       startRegionTransition(() => {
         setPopularRegion(nextRegion);
-        setShowAllHits(false);
       });
     },
     [popularRegion]
   );
 
-  const handleToggleShowMoreHits = useCallback(async () => {
+  const handleShowMoreHits = useCallback(async () => {
     if (isStreamingMore) return;
 
-    if (showAllHits) {
-      setShowAllHits(false);
-      return;
-    }
+    const requestRegion = activeRegionRef.current;
+    const currentVisibleCount = visibleCountByRegion[requestRegion];
+    if (currentVisibleCount >= MAX_CHART_TRACKS) return;
 
-    setShowAllHits(true);
-    const region = popularRegion;
+    const nextTarget = Math.min(MAX_CHART_TRACKS, currentVisibleCount + CHART_EXPAND_STEP);
+    setVisibleCountByRegion((prev) => ({ ...prev, [requestRegion]: nextTarget }));
+
     const currentTracks =
-      region === 'global' ? quickTryChartsRef.current.global : quickTryChartsRef.current.sriLanka;
+      requestRegion === 'global'
+        ? quickTryChartsRef.current.global
+        : quickTryChartsRef.current.sriLanka;
 
-    if (loadedFullRegions[region] || currentTracks.length >= MAX_CHART_TRACKS) {
+    if (currentTracks.length >= nextTarget || loadedFullRegions[requestRegion]) {
+      setAnimateNewFromIndex(
+        currentTracks.length > currentVisibleCount ? currentVisibleCount : null
+      );
       return;
     }
 
@@ -557,14 +607,26 @@ function TrackCodeWorkspace() {
     }
     const controller = new AbortController();
     streamAbortRef.current = controller;
+    hasStreamedSessionRef.current = true;
+    setAnimateNewFromIndex(currentTracks.length);
+    setStreamTargetCount(nextTarget);
     setIsStreamingMore(true);
 
     const offset = currentTracks.length;
-    const limit = MAX_CHART_TRACKS - offset;
+    const limit = Math.min(MAX_CHART_TRACKS - offset, nextTarget - offset);
+    if (limit <= 0) {
+      streamAbortRef.current = null;
+      setStreamTargetCount(null);
+      setIsStreamingMore(false);
+      return;
+    }
+
+    const regionQueryParam = requestRegion === 'sriLanka' ? 'lk' : 'global';
+    let receivedCount = 0;
 
     try {
       const res = await fetch(
-        `/api/quick-try?region=${encodeURIComponent(region)}&offset=${offset}&limit=${limit}&stream=ndjson`,
+        `/api/quick-try?region=${regionQueryParam}&offset=${offset}&limit=${limit}&stream=1`,
         { signal: controller.signal }
       );
       if (!res.ok || !res.body) {
@@ -576,18 +638,25 @@ function TrackCodeWorkspace() {
       let buffer = '';
 
       const applyIncomingBatch = (batch: TrackItem[]) => {
-        if (batch.length === 0 || controller.signal.aborted) return;
+        if (
+          batch.length === 0 ||
+          controller.signal.aborted ||
+          requestRegion !== activeRegionRef.current
+        ) {
+          return;
+        }
+        receivedCount += batch.length;
         cacheTrackPreviewsFromTracks(batch);
         const hydratedBatch = hydrateTracksWithCachedIsrc(batch);
 
         setQuickTryCharts((prev) => {
-          const existing = region === 'global' ? prev.global : prev.sriLanka;
+          const existing = requestRegion === 'global' ? prev.global : prev.sriLanka;
           const merged = syncQuickTryChartHistory(
             mergeChartTracks(existing, hydratedBatch),
-            region
+            requestRegion
           );
           const next =
-            region === 'global'
+            requestRegion === 'global'
               ? { ...prev, global: merged }
               : { ...prev, sriLanka: merged };
           saveCachedQuickTryCharts(next);
@@ -598,7 +667,7 @@ function TrackCodeWorkspace() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || requestRegion !== activeRegionRef.current) return;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -620,7 +689,11 @@ function TrackCodeWorkspace() {
         applyIncomingBatch(parsedBatch);
       }
 
-      if (buffer.trim() && !controller.signal.aborted) {
+      if (
+        buffer.trim() &&
+        !controller.signal.aborted &&
+        requestRegion === activeRegionRef.current
+      ) {
         try {
           const parsed = JSON.parse(buffer.trim()) as TrackItem;
           if (parsed?.id) {
@@ -631,26 +704,45 @@ function TrackCodeWorkspace() {
         }
       }
 
-      if (!controller.signal.aborted) {
-        setLoadedFullRegions((prev) => ({ ...prev, [region]: true }));
+      if (!controller.signal.aborted && requestRegion === activeRegionRef.current) {
+        const latestTracks =
+          requestRegion === 'global'
+            ? quickTryChartsRef.current.global
+            : quickTryChartsRef.current.sriLanka;
+        if (latestTracks.length >= MAX_CHART_TRACKS || receivedCount < limit) {
+          setLoadedFullRegions((prev) => ({ ...prev, [requestRegion]: true }));
+        }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
-      const latest =
-        region === 'global' ? quickTryChartsRef.current.global : quickTryChartsRef.current.sriLanka;
-      if (latest.length <= 5) {
-        setShowAllHits(false);
+      if (requestRegion === activeRegionRef.current) {
+        const latest =
+          requestRegion === 'global'
+            ? quickTryChartsRef.current.global
+            : quickTryChartsRef.current.sriLanka;
+        setVisibleCountByRegion((prev) => ({
+          ...prev,
+          [requestRegion]: Math.max(INITIAL_CHART_COUNT, Math.min(prev[requestRegion], latest.length)),
+        }));
+        showToast('Could not load more hits right now', 'info');
       }
-      showToast('Could not load all 25 hits right now', 'info');
     } finally {
       if (streamAbortRef.current === controller) {
         streamAbortRef.current = null;
+        setStreamTargetCount(null);
         setIsStreamingMore(false);
       }
     }
-  }, [isStreamingMore, showAllHits, popularRegion, loadedFullRegions, showToast]);
+  }, [isStreamingMore, visibleCountByRegion, loadedFullRegions, showToast]);
+
+  const handleFocusSearchFromFooter = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.setTimeout(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    }, 320);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -658,25 +750,24 @@ function TrackCodeWorkspace() {
     fetch('/api/quick-try')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: QuickTryApiResponse | null) => {
-        if (!cancelled && data) {
-          const rawGlobal = Array.isArray(data.global) ? data.global : [];
-          const rawSriLanka = Array.isArray(data.sriLanka) ? data.sriLanka : [];
-          if (rawGlobal.length > 0 || rawSriLanka.length > 0) {
-            cacheTrackPreviewsFromTracks([...rawGlobal, ...rawSriLanka]);
-            const nextCharts = {
-              global:
-                rawGlobal.length > 0
-                  ? syncQuickTryChartHistory(mergeChartTracks([], rawGlobal), 'global')
-                  : [],
-              sriLanka:
-                rawSriLanka.length > 0
-                  ? syncQuickTryChartHistory(mergeChartTracks([], rawSriLanka), 'sriLanka')
-                  : [],
-            };
-            setQuickTryCharts(nextCharts);
-            setLoadedFullRegions({ global: false, sriLanka: false });
-            saveCachedQuickTryCharts(nextCharts);
-          }
+        if (cancelled || !data || hasStreamedSessionRef.current) return;
+        const rawGlobal = Array.isArray(data.global) ? data.global : [];
+        const rawSriLanka = Array.isArray(data.sriLanka) ? data.sriLanka : [];
+        if (rawGlobal.length > 0 || rawSriLanka.length > 0) {
+          cacheTrackPreviewsFromTracks([...rawGlobal, ...rawSriLanka]);
+          const nextCharts = {
+            global:
+              rawGlobal.length > 0
+                ? syncQuickTryChartHistory(mergeChartTracks([], rawGlobal), 'global')
+                : [],
+            sriLanka:
+              rawSriLanka.length > 0
+                ? syncQuickTryChartHistory(mergeChartTracks([], rawSriLanka), 'sriLanka')
+                : [],
+          };
+          setQuickTryCharts(nextCharts);
+          setLoadedFullRegions({ global: false, sriLanka: false });
+          saveCachedQuickTryCharts(nextCharts);
         }
       })
       .catch(() => {
@@ -1413,58 +1504,80 @@ function TrackCodeWorkspace() {
       <RegionSegmentedToggle
         activeTabPill={activeTabPill}
         onTabPress={handleRegionPillPress}
+        onTabCancel={handleRegionPillCancel}
         onChange={handleRegionChange}
       />
     ),
-    [activeTabPill, handleRegionPillPress, handleRegionChange]
+    [activeTabPill, handleRegionPillPress, handleRegionPillCancel, handleRegionChange]
   );
 
   const popularFooterControl = useMemo(() => {
-    const shouldRenderFooter =
-      isStreamingMore ||
-      showAllHits ||
-      !loadedFullRegions[popularRegion] ||
-      activeQuickTryTracks.length > 5;
-    if (!shouldRenderFooter) return null;
+    if (displayedQuickTryTracks.length === 0 && !isStreamingMore) {
+      return null;
+    }
+
+    const targetCount = streamTargetCount ?? Math.min(MAX_CHART_TRACKS, activeVisibleCount);
+    const hasMoreToRevealOrFetch =
+      displayedQuickTryTracks.length < MAX_CHART_TRACKS &&
+      (!loadedFullRegions[popularRegion] ||
+        activeQuickTryTracks.length > displayedQuickTryTracks.length);
+
+    if (isStreamingMore) {
+      return (
+        <div
+          aria-live="polite"
+          className="flex w-full items-center justify-center gap-2 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70" aria-hidden="true" />
+          <span className="tabular-nums">
+            Loading {Math.min(activeQuickTryTracks.length, targetCount)} / {targetCount}…
+          </span>
+        </div>
+      );
+    }
+
+    if (hasMoreToRevealOrFetch) {
+      return (
+        <button
+          type="button"
+          onClick={() => void handleShowMoreHits()}
+          className="flex w-full touch-manipulation cursor-pointer items-center justify-center gap-1.5 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75 transition-colors duration-100 hover:bg-white/[0.03] hover:text-white active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30"
+        >
+          <span>Show more</span>
+          <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
+        </button>
+      );
+    }
 
     return (
-      <button
-        type="button"
-        disabled={isStreamingMore}
-        onClick={() => void handleToggleShowMoreHits()}
-        className={`flex w-full touch-manipulation items-center justify-center gap-1.5 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
-          isStreamingMore
-            ? 'cursor-wait opacity-85'
-            : 'cursor-pointer hover:bg-white/[0.03] hover:text-white active:bg-[#2A2A2E]'
-        }`}
-      >
-        {isStreamingMore ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70" aria-hidden="true" />
-            <span className="tabular-nums">
-              Loading {activeQuickTryTracks.length} / {MAX_CHART_TRACKS}…
-            </span>
-          </>
-        ) : showAllHits ? (
-          <>
-            <span>Show less</span>
-            <ChevronUp className="h-4 w-4 text-white/50" aria-hidden="true" />
-          </>
-        ) : (
-          <>
-            <span>Show more</span>
-            <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
-          </>
-        )}
-      </button>
+      <div className="border-t border-white/[0.08] px-4 py-4 text-center">
+        <p className="text-[13px] font-medium text-white/65">
+          {displayedQuickTryTracks.length >= MAX_CHART_TRACKS
+            ? 'That’s all 50 top hits for today :)'
+            : `That’s all ${displayedQuickTryTracks.length} top hits for today :)`}
+        </p>
+        <p className="mt-1 text-[12px] text-white/45">
+          Didn’t find one you liked?{' '}
+          <button
+            type="button"
+            onClick={handleFocusSearchFromFooter}
+            className="touch-manipulation cursor-pointer font-medium text-[#30D158] transition-colors hover:text-[#4AE070] active:opacity-80 focus-visible:outline-none focus-visible:underline"
+          >
+            Search any song above
+          </button>
+        </p>
+      </div>
     );
   }, [
     isStreamingMore,
-    showAllHits,
+    streamTargetCount,
+    activeVisibleCount,
     loadedFullRegions,
     popularRegion,
     activeQuickTryTracks.length,
-    handleToggleShowMoreHits,
+    displayedQuickTryTracks.length,
+    handleShowMoreHits,
+    handleFocusSearchFromFooter,
   ]);
 
   const recentHasPlayingTrack = Boolean(
@@ -1878,6 +1991,8 @@ function TrackCodeWorkspace() {
                         audioProgress={popularHasPlayingTrack ? audioProgress : 0}
                         showRanks={true}
                         isLoading={isQuickTryLoading}
+                        isStreamingMore={isStreamingMore}
+                        animateFromIndex={animateNewFromIndex}
                         skeletonCount={5}
                         onTogglePreview={handleToggleTrackPreview}
                         onSelect={handleSelectTrack}

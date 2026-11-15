@@ -632,10 +632,16 @@ const CHART_HISTORY_PATH = '/tmp/trackcode-chart-history.json';
 const CHART_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CHART_FALLBACK_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CHART_HISTORY_DAYS = 14;
-const MAX_CHART_TRACKS = 25;
+const MAX_CHART_TRACKS = 50;
 const INITIAL_CHART_COUNT = 5;
-const APPLE_LK_RSS_URL =
-  'https://rss.marketingtools.apple.com/api/v2/lk/music/most-played/25/songs.json';
+const APPLE_US_RSS_URLS = [
+  'https://rss.applemarketingtools.com/api/v2/us/music/most-played/50/songs.json',
+  'https://rss.marketingtools.apple.com/api/v2/us/music/most-played/50/songs.json',
+];
+const APPLE_LK_RSS_URLS = [
+  'https://rss.applemarketingtools.com/api/v2/lk/music/most-played/50/songs.json',
+  'https://rss.marketingtools.apple.com/api/v2/lk/music/most-played/50/songs.json',
+];
 
 const BASELINE_GLOBAL_CHART_RANKS: Record<string, number> = {
   USQX92600464: 2,
@@ -1490,15 +1496,24 @@ interface AppleRssSong {
 
 type RawRegionFeed =
   | {
+      region: ChartRegion;
+      provider: 'apple';
+      usedFallback: false;
+      entries: AppleRssSong[];
+      fallbackTracks: TrackItem[];
+    }
+  | {
       region: 'global';
-      usedFallback: boolean;
+      provider: 'deezer';
+      usedFallback: false;
       entries: DeezerSearchTrack[];
       fallbackTracks: TrackItem[];
     }
   | {
-      region: 'sriLanka';
-      usedFallback: boolean;
-      entries: AppleRssSong[];
+      region: ChartRegion;
+      provider: 'fallback';
+      usedFallback: true;
+      entries: [];
       fallbackTracks: TrackItem[];
     };
 
@@ -1646,6 +1661,36 @@ function deduplicateAndRankTracks(
   return deduped;
 }
 
+async function fetchAppleMostPlayedRss(urls: string[]): Promise<AppleRssSong[]> {
+  for (const url of urls) {
+    try {
+      const rssRes = await fetch(url, {
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!rssRes.ok) continue;
+      const rssPayload = (await rssRes.json()) as {
+        feed?: { results?: AppleRssSong[] };
+      };
+      const rawSongs = Array.isArray(rssPayload.feed?.results)
+        ? rssPayload.feed.results.slice(0, MAX_CHART_TRACKS)
+        : [];
+      const seenIds = new Set<string>();
+      const entries: AppleRssSong[] = [];
+      for (const song of rawSongs) {
+        if (!song?.id || seenIds.has(song.id)) continue;
+        seenIds.add(song.id);
+        entries.push(song);
+      }
+      if (entries.length >= INITIAL_CHART_COUNT) {
+        return entries;
+      }
+    } catch {
+      // Try next RSS mirror
+    }
+  }
+  return [];
+}
+
 async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFeedCacheEntry> {
   const todayKey = getUtcDateKey();
   const existing = dailyRegionFeedCache[region];
@@ -1663,6 +1708,25 @@ async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFe
     const previousRanks = getPreviousRanksForRegion(region, history, todayKey);
 
     if (region === 'global') {
+      const appleUsEntries = await fetchAppleMostPlayedRss(APPLE_US_RSS_URLS);
+      if (appleUsEntries.length >= INITIAL_CHART_COUNT) {
+        const entry: RegionFeedCacheEntry = {
+          dateKey: todayKey,
+          expiresAt: Date.now() + CHART_CACHE_TTL_MS,
+          feed: {
+            region: 'global',
+            provider: 'apple',
+            usedFallback: false,
+            entries: appleUsEntries,
+            fallbackTracks: [],
+          },
+          resolvedByIndex: new Map(),
+          previousRanks,
+        };
+        dailyRegionFeedCache.global = entry;
+        return entry;
+      }
+
       try {
         const chartPayload = await fetchDeezerJson<{
           data?: DeezerSearchTrack[];
@@ -1689,6 +1753,7 @@ async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFe
           expiresAt: Date.now() + CHART_CACHE_TTL_MS,
           feed: {
             region: 'global',
+            provider: 'deezer',
             usedFallback: false,
             entries,
             fallbackTracks: [],
@@ -1707,6 +1772,7 @@ async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFe
           expiresAt: Date.now() + CHART_FALLBACK_CACHE_TTL_MS,
           feed: {
             region: 'global',
+            provider: 'fallback',
             usedFallback: true,
             entries: [],
             fallbackTracks: fallback,
@@ -1719,38 +1785,16 @@ async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFe
       }
     }
 
-    try {
-      const rssRes = await fetch(APPLE_LK_RSS_URL, {
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-      if (!rssRes.ok) {
-        throw new Error(`APPLE_LK_RSS_ERROR:${rssRes.status}`);
-      }
-      const rssPayload = (await rssRes.json()) as {
-        feed?: { results?: AppleRssSong[] };
-      };
-      const rawSongs = Array.isArray(rssPayload.feed?.results)
-        ? rssPayload.feed.results.slice(0, MAX_CHART_TRACKS)
-        : [];
-      const seenIds = new Set<string>();
-      const entries: AppleRssSong[] = [];
-      for (const song of rawSongs) {
-        if (!song?.id || seenIds.has(song.id)) continue;
-        seenIds.add(song.id);
-        entries.push(song);
-      }
-
-      if (entries.length < 4) {
-        throw new Error('APPLE_LK_RSS_INSUFFICIENT');
-      }
-
+    const appleLkEntries = await fetchAppleMostPlayedRss(APPLE_LK_RSS_URLS);
+    if (appleLkEntries.length >= 4) {
       const entry: RegionFeedCacheEntry = {
         dateKey: todayKey,
         expiresAt: Date.now() + CHART_CACHE_TTL_MS,
         feed: {
           region: 'sriLanka',
+          provider: 'apple',
           usedFallback: false,
-          entries,
+          entries: appleLkEntries,
           fallbackTracks: [],
         },
         resolvedByIndex: new Map(),
@@ -1758,25 +1802,26 @@ async function getOrCreateRegionFeedCache(region: ChartRegion): Promise<RegionFe
       };
       dailyRegionFeedCache.sriLanka = entry;
       return entry;
-    } catch {
-      const fallback = SRI_LANKA_FALLBACK_TRACKS.slice(0, MAX_CHART_TRACKS);
-      const resolvedByIndex = new Map<number, TrackItem | null>();
-      fallback.forEach((t, idx) => resolvedByIndex.set(idx, t));
-      const entry: RegionFeedCacheEntry = {
-        dateKey: todayKey,
-        expiresAt: Date.now() + CHART_FALLBACK_CACHE_TTL_MS,
-        feed: {
-          region: 'sriLanka',
-          usedFallback: true,
-          entries: [],
-          fallbackTracks: fallback,
-        },
-        resolvedByIndex,
-        previousRanks,
-      };
-      dailyRegionFeedCache.sriLanka = entry;
-      return entry;
     }
+
+    const fallback = SRI_LANKA_FALLBACK_TRACKS.slice(0, MAX_CHART_TRACKS);
+    const resolvedByIndex = new Map<number, TrackItem | null>();
+    fallback.forEach((t, idx) => resolvedByIndex.set(idx, t));
+    const entry: RegionFeedCacheEntry = {
+      dateKey: todayKey,
+      expiresAt: Date.now() + CHART_FALLBACK_CACHE_TTL_MS,
+      feed: {
+        region: 'sriLanka',
+        provider: 'fallback',
+        usedFallback: true,
+        entries: [],
+        fallbackTracks: fallback,
+      },
+      resolvedByIndex,
+      previousRanks,
+    };
+    dailyRegionFeedCache.sriLanka = entry;
+    return entry;
   })();
 
   inflightRegionFeedPromises[region] = promise;
@@ -1797,32 +1842,49 @@ async function resolveRegionRange(
   const totalCount = cacheEntry.feed.usedFallback
     ? cacheEntry.feed.fallbackTracks.length
     : cacheEntry.feed.entries.length;
-  const clampedStart = Math.max(0, Math.min(offset, totalCount));
-  const clampedEnd = Math.max(clampedStart, Math.min(totalCount, clampedStart + limit));
-
-  // Build seen IDs/ISRCs from already resolved earlier items to prevent duplicates
-  const seenIds = new Set<string>();
-  const seenIsrcs = new Set<string>();
-  let nextRank = 1;
-  for (let i = 0; i < clampedStart; i += 1) {
-    const prior = cacheEntry.resolvedByIndex.get(i);
-    if (prior) {
-      seenIds.add(prior.id);
-      const iso = prior.isrc?.trim().toUpperCase();
-      if (iso) seenIsrcs.add(iso);
-      nextRank += 1;
-    }
+  const targetStart = Math.max(0, Math.min(offset, MAX_CHART_TRACKS));
+  const targetCount = Math.max(0, Math.min(limit, MAX_CHART_TRACKS - targetStart));
+  if (targetCount === 0 || totalCount === 0) {
+    return [];
   }
 
+  // Walk already-cached indices sequentially so offset maps cleanly to deduplicated tracks
+  const seenIds = new Set<string>();
+  const seenIsrcs = new Set<string>();
+  let validPriorCount = 0;
+  let cursor = 0;
+
+  while (cursor < totalCount && validPriorCount < targetStart) {
+    if (!cacheEntry.resolvedByIndex.has(cursor)) {
+      // Cold server instance without prior indices in memory: jump directly to targetStart
+      cursor = Math.max(cursor, targetStart);
+      validPriorCount = targetStart;
+      break;
+    }
+    const prior = cacheEntry.resolvedByIndex.get(cursor);
+    cursor += 1;
+    if (!prior) continue;
+    if (seenIds.has(prior.id)) continue;
+    const iso = prior.isrc?.trim().toUpperCase() || '';
+    if (iso && seenIsrcs.has(iso)) continue;
+
+    seenIds.add(prior.id);
+    if (iso) seenIsrcs.add(iso);
+    validPriorCount += 1;
+  }
+
+  let nextRank = validPriorCount + 1;
   const output: TrackItem[] = [];
   const batchSize = 3;
 
-  for (let cursor = clampedStart; cursor < clampedEnd; cursor += batchSize) {
-    const endCursor = Math.min(clampedEnd, cursor + batchSize);
+  while (cursor < totalCount && output.length < targetCount && nextRank <= MAX_CHART_TRACKS) {
+    const remainingNeeded = targetCount - output.length;
+    const stepSize = Math.min(batchSize, remainingNeeded, totalCount - cursor);
     const indices: number[] = [];
-    for (let i = cursor; i < endCursor; i += 1) {
-      indices.push(i);
+    for (let i = 0; i < stepSize; i += 1) {
+      indices.push(cursor + i);
     }
+    cursor += stepSize;
 
     const batchResolved = await Promise.all(
       indices.map(async (idx): Promise<TrackItem | null> => {
@@ -1831,9 +1893,9 @@ async function resolveRegionRange(
         }
 
         let resolved: TrackItem | null = null;
-        if (cacheEntry.feed.usedFallback) {
+        if (cacheEntry.feed.provider === 'fallback') {
           resolved = cacheEntry.feed.fallbackTracks[idx] ?? null;
-        } else if (cacheEntry.feed.region === 'global') {
+        } else if (cacheEntry.feed.provider === 'deezer') {
           const item = cacheEntry.feed.entries[idx];
           resolved = item ? await resolveGlobalEntryViaDeezer(item) : null;
         } else {
@@ -1848,7 +1910,8 @@ async function resolveRegionRange(
 
     const emittedBatch: TrackItem[] = [];
     for (const track of batchResolved) {
-      if (!track || nextRank > MAX_CHART_TRACKS) continue;
+      if (output.length >= targetCount || nextRank > MAX_CHART_TRACKS) break;
+      if (!track) continue;
       if (seenIds.has(track.id)) continue;
       const iso = track.isrc?.trim().toUpperCase() || '';
       if (iso && seenIsrcs.has(iso)) continue;
@@ -1878,7 +1941,11 @@ async function resolveRegionRange(
       }
     }
 
-    if (endCursor < clampedEnd && !cacheEntry.feed.usedFallback) {
+    if (
+      cursor < totalCount &&
+      output.length < targetCount &&
+      !cacheEntry.feed.usedFallback
+    ) {
       await sleep(80);
     }
   }
@@ -1950,13 +2017,17 @@ export async function handleQuickTryRequest(
 
   if (streamMode === 'ndjson' || streamMode === '1') {
     const regionParam = parsedUrl.searchParams.get('region');
-    const region: ChartRegion = regionParam === 'sriLanka' ? 'sriLanka' : 'global';
+    const region: ChartRegion =
+      regionParam === 'sriLanka' || regionParam === 'lk' ? 'sriLanka' : 'global';
     const rawOffset = Number.parseInt(parsedUrl.searchParams.get('offset') || '5', 10);
-    const rawLimit = Number.parseInt(parsedUrl.searchParams.get('limit') || '20', 10);
-    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.min(MAX_CHART_TRACKS, rawOffset)) : 5;
+    const rawLimit = Number.parseInt(parsedUrl.searchParams.get('limit') || '15', 10);
+    const offset = Number.isFinite(rawOffset)
+      ? Math.max(0, Math.min(MAX_CHART_TRACKS - 1, rawOffset))
+      : 5;
+    const maxRemaining = Math.max(1, MAX_CHART_TRACKS - offset);
     const limit = Number.isFinite(rawLimit)
-      ? Math.max(1, Math.min(MAX_CHART_TRACKS, rawLimit))
-      : MAX_CHART_TRACKS;
+      ? Math.max(1, Math.min(maxRemaining, rawLimit))
+      : Math.min(15, maxRemaining);
 
     let clientAborted = false;
     const markAborted = () => {
