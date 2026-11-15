@@ -60,9 +60,12 @@ import {
   getTrackPreviewCacheKey,
   hydrateTracksWithCachedIsrc,
   isSpotifyTrackLink,
+  type LastCopiedEntry,
   loadCachedQuickTryCharts,
+  loadLastCopied,
   loadRecentTracks,
   saveCachedQuickTryCharts,
+  saveLastCopied,
   saveRecentTrack,
   setCachedSearchResult,
   setCachedTrackIsrc,
@@ -75,6 +78,13 @@ const GuidePage = lazy(() => import('./components/GuidePage'));
 const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
 
 const FORCE_MAINTENANCE = false;
+
+const SEARCH_PLACEHOLDERS = [
+  'Search song name...',
+  'Paste a Spotify link...',
+  'Search by artist...',
+  'Find hidden Instagram songs...',
+];
 
 function useIsDesktop(): boolean {
   const [isDesktop, setIsDesktop] = useState(() =>
@@ -361,6 +371,8 @@ function mergeChartTracks(existing: TrackItem[], incoming: TrackItem[]): TrackIt
 function TrackCodeWorkspace() {
   const isDesktop = useIsDesktop();
   const [query, setQuery] = useState('');
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [results, setResults] = useState<TrackItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -415,6 +427,7 @@ function TrackCodeWorkspace() {
   const isDesktopRef = useRef(isDesktop);
   isDesktopRef.current = isDesktop;
   const activeInspectTrackRef = useRef<TrackItem | null>(null);
+  const [lastCopied, setLastCopied] = useState<LastCopiedEntry | null>(() => loadLastCopied());
   const [isLastCopiedSuccess, setIsLastCopiedSuccess] = useState(false);
   const lastCopiedTimerRef = useRef<number | null>(null);
   const [isPageScrolled, setIsPageScrolled] = useState(false);
@@ -422,7 +435,6 @@ function TrackCodeWorkspace() {
   const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
   const isLinkMode = isSpotifyTrackLink(trimmedQuery);
-  const lastCopiedTrack = recentTracks.find((item) => Boolean(item.isrc)) ?? null;
 
   const visibleTracks = useMemo(() => {
     if (trimmedQuery) {
@@ -452,15 +464,18 @@ function TrackCodeWorkspace() {
   const activeInspectTrack = isDesktop ? activeDesktopTrack : sheetTrack;
   activeInspectTrackRef.current = activeInspectTrack;
 
-  const showToast = useCallback((message: string, tone: ToastState['tone'] = 'success') => {
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-    setToast({ id: Date.now(), message, tone });
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-    }, 2600);
-  }, []);
+  const showToast = useCallback(
+    (message: string, tone: ToastState['tone'] = 'success', durationMs = 2600) => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      setToast({ id: Date.now(), message, tone });
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+      }, durationMs);
+    },
+    []
+  );
 
   const handleAudioIsrcResolved = useCallback((trackId: string, resolvedIsrc: string) => {
     const patchTrack = (item: TrackItem) =>
@@ -687,6 +702,14 @@ function TrackCodeWorkspace() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (query || isSearchFocused) return;
+    const timer = window.setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+    }, 2800);
+    return () => window.clearInterval(timer);
+  }, [query, isSearchFocused]);
 
   useEffect(() => {
     return () => {
@@ -1188,6 +1211,12 @@ function TrackCodeWorkspace() {
         setFetchingIsrcTrackId(null);
         setRecentTracks(saveRecentTrack(effectiveTrack));
         if (copied) {
+          const nextLastCopied: LastCopiedEntry = {
+            isrc: effectiveTrack.isrc.trim().toUpperCase(),
+            title: effectiveTrack.name?.trim() ?? '',
+          };
+          setLastCopied(nextLastCopied);
+          saveLastCopied(nextLastCopied);
           setAutoCopiedSignal((s) => s + 1);
           showToast(`Copied ${formatIsrcCode(effectiveTrack.isrc)}`, 'success');
         } else {
@@ -1265,6 +1294,12 @@ function TrackCodeWorkspace() {
       if (copiedTrack) {
         setRecentTracks(saveRecentTrack(copiedTrack));
       }
+      const nextLastCopied: LastCopiedEntry = {
+        isrc: isrc.trim().toUpperCase(),
+        title: copiedTrack?.name?.trim() ?? '',
+      };
+      setLastCopied(nextLastCopied);
+      saveLastCopied(nextLastCopied);
       showToast(`Copied ${formatIsrcCode(isrc)}`, 'success');
     },
     [showToast]
@@ -1294,8 +1329,8 @@ function TrackCodeWorkspace() {
   };
 
   const handleQuickCopyLast = async () => {
-    if (!lastCopiedTrack?.isrc) return;
-    const copied = await copyIsrcVerified(lastCopiedTrack.isrc);
+    if (!lastCopied?.isrc) return;
+    const copied = await copyIsrcVerified(lastCopied.isrc);
     if (copied) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(10);
@@ -1308,9 +1343,15 @@ function TrackCodeWorkspace() {
         lastCopiedTimerRef.current = null;
         setIsLastCopiedSuccess(false);
       }, 1500);
-      showToast(`Copied ${formatIsrcCode(lastCopiedTrack.isrc)}`, 'success');
+      const formatted = formatIsrcCode(lastCopied.isrc);
+      showToast(lastCopied.title ? `Copied "${lastCopied.title}"` : `Copied ${formatted}`, 'success', 1200);
       if (isDesktopRef.current) {
-        setInspectedTrack(lastCopiedTrack);
+        const matchedRecent = recentTracks.find(
+          (item) => item.isrc?.trim().toUpperCase() === lastCopied.isrc
+        );
+        if (matchedRecent) {
+          setInspectedTrack(matchedRecent);
+        }
         setAutoCopiedSignal((s) => s + 1);
       }
     } else {
@@ -1495,7 +1536,7 @@ function TrackCodeWorkspace() {
               >
                 <form
                   onSubmit={handleSearchSubmit}
-                  className="group relative flex h-[56px] sm:h-[60px] items-center gap-3 rounded-[20px] border border-white/[0.12] border-t-white/[0.22] bg-[#1C1C1E] px-4 shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_0_1px_rgba(48,209,88,0.06)] transition-[border-color,background-color] duration-200 focus-within:border-white/[0.26] focus-within:bg-[#222225]"
+                  className="group relative flex h-[56px] sm:h-[60px] items-center gap-3 rounded-[20px] border border-white/[0.12] border-t-white/[0.22] bg-[#1C1C1E] px-4 shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_0_1px_rgba(48,209,88,0.06)] transition-[border-color,background-color,box-shadow] duration-200 ease-out focus-within:border-[#30D158]/45 focus-within:bg-[#202221] focus-within:shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_24px_rgba(48,209,88,0.16),0_0_0_1px_rgba(48,209,88,0.22)]"
                 >
                   {query.length === 0 && (
                     <div
@@ -1519,26 +1560,39 @@ function TrackCodeWorkspace() {
                       />
                     ) : (
                       <Search
-                        className="h-5 w-5 text-white/60 transition-colors duration-200 group-focus-within:text-white/85"
+                        className="h-5 w-5 text-white/60 transition-colors duration-200 group-focus-within:text-[#30D158]"
                         aria-hidden="true"
                       />
                     )}
                   </span>
 
-                  <input
-                    ref={inputRef}
-                    type="search"
-                    inputMode="search"
-                    enterKeyHint="search"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Song, artist, or Spotify link"
-                    aria-label="Search song, artist, or Spotify link"
-                    className="relative z-10 min-w-0 flex-1 touch-manipulation bg-transparent text-[16px] font-medium tracking-[-0.01em] text-white placeholder:text-white/45 outline-none focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-                  />
+                  <div className="relative z-10 flex min-w-0 flex-1 items-center">
+                    <input
+                      ref={inputRef}
+                      type="search"
+                      inputMode="search"
+                      enterKeyHint="search"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={query}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onBlur={() => setIsSearchFocused(false)}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder=""
+                      aria-label="Search song, artist, or Spotify link"
+                      className="w-full touch-manipulation bg-transparent text-[16px] font-medium tracking-[-0.01em] text-white outline-none focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                    />
+                    {!query && !isSearchFocused && (
+                      <span
+                        key={placeholderIndex}
+                        aria-hidden="true"
+                        className="animate-placeholder-in pointer-events-none absolute inset-y-0 left-0 right-1 flex items-center overflow-hidden whitespace-nowrap select-none text-[16px] font-medium tracking-[-0.01em] text-white/45"
+                      >
+                        {SEARCH_PLACEHOLDERS[placeholderIndex]}
+                      </span>
+                    )}
+                  </div>
 
                   <AnimatePresence mode="wait" initial={false}>
                     {query.length === 0 ? (
@@ -1743,12 +1797,12 @@ function TrackCodeWorkspace() {
                 ) : (
                   <div className="space-y-5 pt-1 lg:pt-0">
                     {/* Slim, Low-Profile Last Copied Utility Strip */}
-                    {lastCopiedTrack?.isrc && (
+                    {lastCopied?.isrc && (
                       <section aria-label="Last copied ISRC">
                         <button
                           type="button"
                           onClick={() => void handleQuickCopyLast()}
-                          aria-label={`Re-copy ${formatIsrcCode(lastCopiedTrack.isrc)}`}
+                          aria-label={`Re-copy ${formatIsrcCode(lastCopied.isrc)}`}
                           className="group flex h-[36px] w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-white/[0.06] bg-[#141416] px-3.5 transition-[border-color,transform] duration-150 hover:border-white/[0.11] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                         >
                           <span className="truncate text-[12px] font-medium text-white/40">
@@ -1777,7 +1831,7 @@ function TrackCodeWorkspace() {
                                 className="inline-flex shrink-0 items-center gap-2"
                               >
                                 <span className="font-mono whitespace-nowrap text-[12.5px] tracking-wide text-white/75">
-                                  {formatIsrcCode(lastCopiedTrack.isrc)}
+                                  {formatIsrcCode(lastCopied.isrc)}
                                 </span>
                                 <Copy
                                   className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105"

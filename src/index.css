@@ -451,6 +451,21 @@
   will-change: transform, opacity;
 }
 
+@keyframes placeholder-cycle-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 7px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-placeholder-in {
+  animation: placeholder-cycle-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .trackcode-scroll {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
@@ -495,7 +510,8 @@
   .animate-fade-up,
   .animate-inspector-settle,
   .animate-modal-pop,
-  .animate-search-sheen {
+  .animate-search-sheen,
+  .animate-placeholder-in {
     animation: none;
   }
 

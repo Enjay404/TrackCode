@@ -6,6 +6,7 @@ import type {
 } from '../types/track';
 
 const RECENT_STORAGE_KEY = 'trackcode_recent_tracks_v1';
+const LAST_COPIED_STORAGE_KEY = 'trackcode_last_copied_v1';
 const GUIDE_OPEN_STORAGE_KEY = 'trackcode_ig_guide_open_v1';
 const SEARCH_CACHE_STORAGE_KEY = 'trackcode_search_cache_v2';
 const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v4';
@@ -402,6 +403,64 @@ export function saveRecentTrack(track: TrackItem): TrackItem[] {
 export function clearRecentTracksStorage(): void {
   try {
     localStorage.removeItem(RECENT_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export interface LastCopiedEntry {
+  isrc: string;
+  title: string;
+}
+
+export function loadLastCopied(): LastCopiedEntry | null {
+  try {
+    const raw = localStorage.getItem(LAST_COPIED_STORAGE_KEY);
+    if (raw) {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed) as { isrc?: unknown; title?: unknown };
+        if (typeof parsed?.isrc === 'string' && parsed.isrc.trim()) {
+          return {
+            isrc: parsed.isrc.replace(/^ISRC:/i, '').trim().toUpperCase(),
+            title: typeof parsed.title === 'string' ? parsed.title.trim() : '',
+          };
+        }
+      } else if (trimmed) {
+        return {
+          isrc: trimmed.replace(/^ISRC:/i, '').trim().toUpperCase(),
+          title: '',
+        };
+      }
+    }
+
+    const recent = loadRecentTracks();
+    const firstWithIsrc = recent.find((item) => Boolean(item.isrc));
+    if (firstWithIsrc?.isrc) {
+      return {
+        isrc: firstWithIsrc.isrc.replace(/^ISRC:/i, '').trim().toUpperCase(),
+        title: firstWithIsrc.name?.trim() ?? '',
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastCopied(entry: LastCopiedEntry | null): void {
+  try {
+    if (!entry || !entry.isrc.trim()) {
+      localStorage.removeItem(LAST_COPIED_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      LAST_COPIED_STORAGE_KEY,
+      JSON.stringify({
+        isrc: entry.isrc.replace(/^ISRC:/i, '').trim().toUpperCase(),
+        title: entry.title.trim(),
+      })
+    );
   } catch {
     // Ignore storage errors
   }
