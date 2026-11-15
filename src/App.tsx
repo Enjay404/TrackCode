@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   ClipboardPaste,
@@ -74,11 +75,6 @@ const GuidePage = lazy(() => import('./components/GuidePage'));
 const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
 
 const FORCE_MAINTENANCE = false;
-
-const PLACEHOLDER_MESSAGES = [
-  'Search song, artist, or Spotify link',
-  'Paste open.spotify.com or spotify.link',
-] as const;
 
 function useIsDesktop(): boolean {
   const [isDesktop, setIsDesktop] = useState(() =>
@@ -365,8 +361,6 @@ function mergeChartTracks(existing: TrackItem[], incoming: TrackItem[]): TrackIt
 function TrackCodeWorkspace() {
   const isDesktop = useIsDesktop();
   const [query, setQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [results, setResults] = useState<TrackItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -421,6 +415,8 @@ function TrackCodeWorkspace() {
   const isDesktopRef = useRef(isDesktop);
   isDesktopRef.current = isDesktop;
   const activeInspectTrackRef = useRef<TrackItem | null>(null);
+  const [isLastCopiedSuccess, setIsLastCopiedSuccess] = useState(false);
+  const lastCopiedTimerRef = useRef<number | null>(null);
 
   const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
@@ -677,32 +673,18 @@ function TrackCodeWorkspace() {
       });
 
     // Warm up lazy mobile BottomSheet chunk after initial paint on smaller viewports
-    const warmTimer = window.setTimeout(() => {
-      if (!isDesktopRef.current) {
-        void import('./components/BottomSheet');
-      }
-    }, 800);
-
     return () => {
       cancelled = true;
-      window.clearTimeout(warmTimer);
     };
   }, []);
-
-  useEffect(() => {
-    if (query.length > 0 || isSearchFocused) {
-      return;
-    }
-    const interval = window.setInterval(() => {
-      setPlaceholderIndex((prev) => (prev + 1) % PLACEHOLDER_MESSAGES.length);
-    }, 3500);
-    return () => window.clearInterval(interval);
-  }, [query.length, isSearchFocused]);
 
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
+      }
+      if (lastCopiedTimerRef.current) {
+        window.clearTimeout(lastCopiedTimerRef.current);
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -1304,10 +1286,26 @@ function TrackCodeWorkspace() {
   const handleQuickCopyLast = async () => {
     if (!lastCopiedTrack?.isrc) return;
     const copied = await copyIsrcVerified(lastCopiedTrack.isrc);
-    if (copied && typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(10);
+    if (copied) {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(10);
+      }
+      if (lastCopiedTimerRef.current) {
+        window.clearTimeout(lastCopiedTimerRef.current);
+      }
+      setIsLastCopiedSuccess(true);
+      lastCopiedTimerRef.current = window.setTimeout(() => {
+        lastCopiedTimerRef.current = null;
+        setIsLastCopiedSuccess(false);
+      }, 1500);
+      showToast(`Copied ${formatIsrcCode(lastCopiedTrack.isrc)}`, 'success');
+      if (isDesktopRef.current) {
+        setInspectedTrack(lastCopiedTrack);
+        setAutoCopiedSignal((s) => s + 1);
+      }
+    } else {
+      showToast('Copy failed — tap to retry', 'info');
     }
-    handleSelectTrack(lastCopiedTrack, copied);
   };
 
   const handleShareApp = async () => {
@@ -1477,58 +1475,45 @@ function TrackCodeWorkspace() {
           <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-7">
             {/* Left Column (Desktop col-span-7) / Mobile Full Column */}
             <div className="lg:col-span-7">
-              {/* Spotlight-Style Search Bar (Sticky on Mobile with Dynamic Island top bridge, Static on Desktop) */}
-              <div className="sticky top-[calc(env(safe-area-inset-top,0px)+8px)] z-20 px-4 py-2 before:pointer-events-none before:fixed before:inset-x-0 before:top-0 before:-z-10 before:h-[calc(env(safe-area-inset-top,0px)+8px)] before:bg-[#09090B] before:content-[''] lg:static lg:mb-5 lg:px-0 lg:py-0 lg:before:hidden">
+              {/* iOS 26 Liquid Glass Search Capsule (Sticky on Mobile over solid #09090B safe-area bar, Static on Desktop) */}
+              <div className="sticky top-0 z-20 bg-[#09090B] px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-2.5 lg:static lg:mb-5 lg:bg-transparent lg:px-0 lg:py-0">
                 <form
                   onSubmit={handleSearchSubmit}
-                  className="liquid-glass-search relative flex min-h-[56px] items-center rounded-[18px]"
+                  className="group relative flex h-[48px] items-center gap-2.5 overflow-hidden rounded-[16px] border border-white/[0.09] border-t-white/[0.24] border-b-white/[0.05] bg-gradient-to-b from-[#26262A] via-[#1C1C1F] to-[#151517] px-3.5 shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.20),inset_0_-1px_1px_rgba(0,0,0,0.55),0_12px_30px_rgba(0,0,0,0.50)] transition-[border-color,box-shadow,transform] duration-200 ease-out before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/35 before:to-transparent before:content-[''] focus-within:border-white/[0.18] focus-within:border-t-white/[0.42] focus-within:ring-4 focus-within:ring-white/[0.05] focus-within:shadow-[inset_0_1px_1px_rgba(255,255,255,0.28),0_14px_34px_rgba(0,0,0,0.65)]"
                 >
-                  <span className="pointer-events-none flex pl-4">
-                    {isLinkMode ? (
-                      <Link2 className="h-[19px] w-[19px] text-[#30D158]" />
+                  <span className="pointer-events-none flex h-4 w-4 shrink-0 items-center justify-center">
+                    {isLoading ? (
+                      <Loader2
+                        className="h-[15px] w-[15px] animate-spin text-white/65"
+                        aria-hidden="true"
+                      />
+                    ) : isLinkMode ? (
+                      <Link2
+                        className="h-4 w-4 text-[#30D158] transition-colors duration-200"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <Search className="h-[19px] w-[19px] text-white/90 drop-shadow-[0_0_8px_rgba(48,209,88,0.35)]" />
+                      <Search
+                        className="h-4 w-4 text-white/40 transition-colors duration-200 group-focus-within:text-white/80"
+                        aria-hidden="true"
+                      />
                     )}
                   </span>
 
-                  <div className="relative flex min-w-0 flex-1 items-center">
-                    <input
-                      ref={inputRef}
-                      type="search"
-                      inputMode="search"
-                      enterKeyHint="search"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      value={query}
-                      onFocus={() => setIsSearchFocused(true)}
-                      onBlur={() => setIsSearchFocused(false)}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
-                      aria-label="Search song, artist, or paste Spotify link"
-                      className="min-h-[56px] w-full touch-manipulation bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-                    />
-
-                    {query.length === 0 && !isSearchFocused && (
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-3 right-2 flex items-center overflow-hidden"
-                      >
-                        <AnimatePresence mode="wait" initial={false}>
-                          <motion.span
-                            key={placeholderIndex}
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            transition={{ duration: 0.28, ease: 'easeOut' }}
-                            className="truncate text-[16px] text-white/[0.58]"
-                          >
-                            {PLACEHOLDER_MESSAGES[placeholderIndex]}
-                          </motion.span>
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
+                  <input
+                    ref={inputRef}
+                    type="search"
+                    inputMode="search"
+                    enterKeyHint="search"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Song, artist, or Spotify link"
+                    aria-label="Search song, artist, or Spotify link"
+                    className="min-w-0 flex-1 touch-manipulation bg-transparent text-[16px] sm:text-[15px] font-normal tracking-[-0.01em] text-white placeholder:text-white/38 outline-none focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                  />
 
                   <AnimatePresence mode="wait" initial={false}>
                     {query.length === 0 ? (
@@ -1537,36 +1522,36 @@ function TrackCodeWorkspace() {
                         initial={{ opacity: 0, scale: 0.92 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.92 }}
-                        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-                        className="mr-2 flex shrink-0 items-center gap-2"
+                        transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex shrink-0 items-center gap-2"
                       >
                         <kbd
                           aria-hidden="true"
-                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
                         >
                           ⌘K
                         </kbd>
                         <button
                           type="button"
                           onClick={() => void handlePasteFromClipboard()}
-                          className="flex min-h-[36px] min-w-[44px] shrink-0 touch-manipulation cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white transition-[opacity,transform,background-color] duration-150 hover:bg-white/[0.16] active:scale-95 active:bg-white/[0.2]"
+                          className="flex h-[31px] shrink-0 touch-manipulation cursor-pointer items-center gap-1.5 rounded-[10px] border border-[#30D158]/[0.28] border-t-[#30D158]/[0.48] bg-gradient-to-b from-[#30D158]/[0.24] to-[#30D158]/[0.12] px-3 text-[12.5px] font-semibold tracking-[-0.01em] text-[#34E060] shadow-[inset_0_1px_0_rgba(255,255,255,0.20),0_2px_10px_rgba(48,209,88,0.16)] transition-[background,transform,box-shadow] duration-150 hover:from-[#30D158]/[0.32] hover:to-[#30D158]/[0.18] active:scale-95"
                         >
-                          <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
+                          <ClipboardPaste className="h-3.5 w-3.5" aria-hidden="true" />
                           <span>Paste</span>
                         </button>
                       </motion.div>
                     ) : (
                       <motion.div
                         key="clear-action"
-                        initial={{ opacity: 0, scale: 0.92 }}
+                        initial={{ opacity: 0, scale: 0.88 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.92 }}
-                        transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-                        className="mr-0.5 flex shrink-0 items-center gap-1 lg:mr-1.5"
+                        exit={{ opacity: 0, scale: 0.88 }}
+                        transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex shrink-0 items-center gap-2"
                       >
                         <kbd
                           aria-hidden="true"
-                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-1 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
+                          className="hidden select-none items-center rounded-md border border-white/[0.12] bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#8E8E93] lg:inline-flex"
                         >
                           ⌘K
                         </kbd>
@@ -1579,11 +1564,9 @@ function TrackCodeWorkspace() {
                             handleClearInput();
                           }}
                           aria-label="Clear search"
-                          className="relative z-20 flex h-[44px] w-[44px] shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-full text-[#8E8E93] transition-[opacity,transform,background-color] duration-150 active:scale-95 active:bg-white/10 focus-visible:outline-none"
+                          className="relative flex h-[20px] w-[20px] shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-full bg-white/[0.24] text-[#1C1C1E] transition-[background-color,transform] duration-150 before:absolute before:-inset-2.5 before:content-[''] hover:bg-white/[0.34] active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
                         >
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
-                            <X className="h-3.5 w-3.5 stroke-[2.6]" />
-                          </span>
+                          <X className="h-[11px] w-[11px]" strokeWidth={2.8} aria-hidden="true" />
                         </button>
                       </motion.div>
                     )}
@@ -1734,22 +1717,57 @@ function TrackCodeWorkspace() {
                   </>
                 ) : (
                   <div className="space-y-5 pt-1 lg:pt-0">
-                    {/* Last Copied Quick-Grab Strip */}
+                    {/* Unified #1C1C1E Last Copied Quick-Recopy Capsule */}
                     {lastCopiedTrack?.isrc && (
                       <section aria-label="Last copied ISRC">
                         <button
                           type="button"
                           onClick={() => void handleQuickCopyLast()}
-                          className="liquid-glass-strip group flex w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                          aria-label={`Re-copy ${formatIsrcCode(lastCopiedTrack.isrc)}`}
+                          className="group flex w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[16px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] px-3.5 py-2.5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] transition-[background-color,transform] duration-150 hover:bg-[#222225] active:scale-[0.99] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                         >
-                          <span className="text-xs font-medium text-[#8E8E93]">
-                            Last copied
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="font-mono-isrc whitespace-nowrap text-xs font-medium tracking-[0.02em] text-[#D1D1D6]">
-                              {formatIsrcCode(lastCopiedTrack.isrc)}
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#30D158] shadow-[0_0_6px_rgba(48,209,88,0.6)]"
+                            />
+                            <span className="truncate text-[12.5px] font-medium tracking-[-0.01em] text-white/55">
+                              Last copied
                             </span>
-                            <Copy className="h-3.5 w-3.5 shrink-0 text-[#30D158] transition-transform duration-150 group-hover:scale-105" />
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2 rounded-[8px] border border-white/[0.07] bg-white/[0.05] px-2.5 py-1">
+                            <AnimatePresence mode="wait" initial={false}>
+                              {isLastCopiedSuccess ? (
+                                <motion.span
+                                  key="copied"
+                                  initial={{ opacity: 0, scale: 0.92 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.92 }}
+                                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold tracking-[-0.01em] text-[#30D158]"
+                                >
+                                  <Check className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" aria-hidden="true" />
+                                  <span>Copied</span>
+                                </motion.span>
+                              ) : (
+                                <motion.span
+                                  key="code"
+                                  initial={{ opacity: 0, scale: 0.92 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.92 }}
+                                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  <span className="font-mono whitespace-nowrap text-[12px] font-medium tracking-[0.02em] text-white/90">
+                                    {formatIsrcCode(lastCopiedTrack.isrc)}
+                                  </span>
+                                  <Copy
+                                    className="h-3.5 w-3.5 shrink-0 text-white/55 transition-colors duration-150 group-hover:text-white/85"
+                                    aria-hidden="true"
+                                  />
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
                           </span>
                         </button>
                       </section>
