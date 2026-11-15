@@ -227,7 +227,7 @@ export const IsrcInspector = memo(function IsrcInspector({
               }}
               tabIndex={0}
               aria-label={isAudioPlaying ? 'Pause preview' : 'Play 30-second preview'}
-              className="absolute left-1/2 top-1/2 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_4px_16px_rgba(0,0,0,0.75)] transition-transform duration-150 hover:scale-105 hover:bg-black/85 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              className="absolute left-1/2 top-1/2 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 touch-manipulation cursor-pointer items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_4px_16px_rgba(0,0,0,0.75)] transition-transform duration-150 hover:scale-105 hover:bg-black/85 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
             >
               <svg
                 viewBox="0 0 40 40"
@@ -366,7 +366,7 @@ export const IsrcInspector = memo(function IsrcInspector({
                   ? `Copy ${formattedIsrc}`
                   : undefined
             }
-            className={`group relative flex w-full items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25 ${
+            className={`group relative flex w-full touch-manipulation items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-[#2C2C2E] px-4 py-3.5 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25 ${
               isFetchingIsrc
                 ? 'cursor-wait'
                 : 'cursor-pointer hover:bg-[#323234] active:bg-[#3A3A3C]'
@@ -435,7 +435,7 @@ export const IsrcInspector = memo(function IsrcInspector({
             whileTap={isFetchingIsrc ? undefined : { scale: 0.97 }}
             transition={SPRING_BUTTON}
             tabIndex={interactiveTabIndex}
-            className={`flex min-h-[50px] w-full items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] focus-visible:outline-none ${
+            className={`flex min-h-[50px] w-full touch-manipulation items-center justify-center overflow-hidden rounded-[14px] px-5 text-[16px] font-semibold tracking-[-0.01em] transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] focus-visible:outline-none ${
               isFetchingIsrc
                 ? 'cursor-wait bg-white text-black opacity-60'
                 : copiedState
@@ -513,7 +513,7 @@ export const IsrcInspector = memo(function IsrcInspector({
             whileTap={{ scale: 0.97 }}
             transition={SPRING_BUTTON}
             tabIndex={interactiveTabIndex}
-            className="flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-[14px] bg-[#2C2C2E] px-5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-[#343438] active:bg-[#3A3A3C]"
+            className="flex min-h-[50px] w-full touch-manipulation cursor-pointer items-center justify-center gap-2 rounded-[14px] bg-[#2C2C2E] px-5 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-[#343438] active:bg-[#3A3A3C]"
           >
             <Search className="h-4 w-4" />
             <span>Search other versions</span>
@@ -563,7 +563,7 @@ export const IsrcInspector = memo(function IsrcInspector({
             onClick={handleToggleGuide}
             tabIndex={interactiveTabIndex}
             aria-expanded={guideOpen}
-            className="flex min-h-[46px] w-full cursor-pointer items-center justify-between rounded-[16px] px-4 py-2.5 text-left transition-transform duration-150 active:scale-[0.985] active:bg-[#2C2C2E]"
+            className="flex min-h-[46px] w-full touch-manipulation cursor-pointer items-center justify-between rounded-[16px] px-4 py-2.5 text-left transition-transform duration-150 active:scale-[0.985] active:bg-[#2C2C2E]"
           >
             <span className="text-[14px] font-semibold text-white">How to use on Instagram</span>
             <ChevronDown

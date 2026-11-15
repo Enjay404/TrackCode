@@ -25,7 +25,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from 'react';
+import { BottomSheet } from './components/BottomSheet';
 import { BrandLogo } from './components/BrandLogo';
 import { DesktopInspectorCard } from './components/DesktopInspectorCard';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
@@ -67,7 +69,6 @@ import {
   syncQuickTryChartHistory,
 } from './utils/spotifyInput';
 
-const BottomSheet = lazy(() => import('./components/BottomSheet'));
 const EmptySearchView = lazy(() => import('./components/EmptySearchView'));
 const GuidePage = lazy(() => import('./components/GuidePage'));
 const MaintenancePage = lazy(() => import('./components/MaintenancePage'));
@@ -96,10 +97,12 @@ function useIsDesktop(): boolean {
 }
 
 const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
-  region,
+  activeTabPill,
+  onTabPress,
   onChange,
 }: {
-  region: ChartRegion;
+  activeTabPill: ChartRegion;
+  onTabPress: (next: ChartRegion) => void;
   onChange: (next: ChartRegion) => void;
 }) {
   return (
@@ -112,18 +115,19 @@ const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
         aria-hidden="true"
         style={{
           transform:
-            region === 'global' ? 'translate3d(0%, 0, 0)' : 'translate3d(100%, 0, 0)',
+            activeTabPill === 'global' ? 'translate3d(0%, 0, 0)' : 'translate3d(100%, 0, 0)',
         }}
-        className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl border border-white/[0.15] border-t-white/[0.28] bg-gradient-to-b from-[#262629] to-[#1A1A1D] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.4)] transition-transform duration-200 ease-out"
       />
 
       <button
         type="button"
         role="tab"
-        aria-selected={region === 'global'}
+        aria-selected={activeTabPill === 'global'}
+        onPointerDown={() => onTabPress('global')}
         onClick={() => onChange('global')}
-        className={`relative z-10 flex min-h-[36px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
-          region === 'global'
+        className={`relative z-10 flex min-h-[36px] touch-manipulation cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+          activeTabPill === 'global'
             ? 'font-semibold text-white'
             : 'font-medium text-white/50 hover:text-white/80'
         }`}
@@ -135,10 +139,11 @@ const RegionSegmentedToggle = memo(function RegionSegmentedToggle({
       <button
         type="button"
         role="tab"
-        aria-selected={region === 'sriLanka'}
+        aria-selected={activeTabPill === 'sriLanka'}
+        onPointerDown={() => onTabPress('sriLanka')}
         onClick={() => onChange('sriLanka')}
-        className={`relative z-10 flex min-h-[36px] cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
-          region === 'sriLanka'
+        className={`relative z-10 flex min-h-[36px] touch-manipulation cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl py-2 text-[12.5px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${
+          activeTabPill === 'sriLanka'
             ? 'font-semibold text-white'
             : 'font-medium text-white/50 hover:text-white/80'
         }`}
@@ -163,7 +168,6 @@ interface TrackListSectionProps {
   isAudioLoading?: boolean;
   audioProgress?: number;
   showRanks?: boolean;
-  isExpandedScroll?: boolean;
   isLoading?: boolean;
   skeletonCount?: number;
   onTogglePreview?: (track: TrackItem) => void;
@@ -184,7 +188,6 @@ const TrackListSection = memo(function TrackListSection({
   isAudioLoading = false,
   audioProgress = 0,
   showRanks = false,
-  isExpandedScroll = false,
   isLoading = false,
   skeletonCount = 4,
   onTogglePreview,
@@ -201,7 +204,7 @@ const TrackListSection = memo(function TrackListSection({
           <button
             type="button"
             onClick={onClear}
-            className="flex min-h-[36px] cursor-pointer items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] transition-transform duration-150 active:scale-[0.97] active:bg-white/10"
+            className="flex min-h-[36px] touch-manipulation cursor-pointer items-center rounded-lg px-2 text-[13px] font-medium text-[#30D158] transition-transform duration-150 active:scale-[0.97] active:bg-white/10"
           >
             Clear
           </button>
@@ -218,11 +221,7 @@ const TrackListSection = memo(function TrackListSection({
         <div className="overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
           <div
             key={listKeyPrefix ?? 'static'}
-            className={`touch-pan-y ${listKeyPrefix ? 'animate-fade-up ' : ''}${
-              isExpandedScroll
-                ? 'trackcode-scroll max-h-[410px] overflow-y-auto overscroll-contain md:max-h-[460px]'
-                : ''
-            }`}
+            className={listKeyPrefix ? 'animate-fade-up' : undefined}
           >
             {tracks.map((track, index) => {
               const isThisActive = playingTrackId === track.id;
@@ -241,7 +240,7 @@ const TrackListSection = memo(function TrackListSection({
                     showRank={showRanks}
                     isPreviewPlaying={isThisActive && !isAudioLoading}
                     isPreviewLoading={isThisActive && isAudioLoading}
-                    previewProgress={isThisActive ? audioProgress : 0}
+                    progress={isThisActive ? audioProgress : 0}
                     onTogglePreview={onTogglePreview}
                     onSelect={onSelect}
                   />
@@ -375,6 +374,8 @@ function TrackCodeWorkspace() {
   const [hasSearched, setHasSearched] = useState(false);
 
   const [popularRegion, setPopularRegion] = useState<ChartRegion>('global');
+  const [activeTabPill, setActiveTabPill] = useState<ChartRegion>('global');
+  const [, startRegionTransition] = useTransition();
   const [showAllHits, setShowAllHits] = useState(false);
   const [isStreamingMore, setIsStreamingMore] = useState(false);
   const [loadedFullRegions, setLoadedFullRegions] = useState<Record<ChartRegion, boolean>>({
@@ -501,16 +502,23 @@ function TrackCodeWorkspace() {
   const playingTrackIdRef = useRef<string | null>(null);
   playingTrackIdRef.current = playingTrackId;
 
+  const handleRegionPillPress = useCallback((nextRegion: ChartRegion) => {
+    setActiveTabPill(nextRegion);
+  }, []);
+
   const handleRegionChange = useCallback(
     (nextRegion: ChartRegion) => {
+      setActiveTabPill(nextRegion);
       if (nextRegion === popularRegion) return;
       if (streamAbortRef.current) {
         streamAbortRef.current.abort();
         streamAbortRef.current = null;
       }
       setIsStreamingMore(false);
-      setPopularRegion(nextRegion);
-      setShowAllHits(false);
+      startRegionTransition(() => {
+        setPopularRegion(nextRegion);
+        setShowAllHits(false);
+      });
     },
     [popularRegion]
   );
@@ -1351,8 +1359,74 @@ function TrackCodeWorkspace() {
     showToast('Copy the URL from your browser bar', 'info');
   };
 
+  const popularHeaderControl = useMemo(
+    () => (
+      <RegionSegmentedToggle
+        activeTabPill={activeTabPill}
+        onTabPress={handleRegionPillPress}
+        onChange={handleRegionChange}
+      />
+    ),
+    [activeTabPill, handleRegionPillPress, handleRegionChange]
+  );
+
+  const popularFooterControl = useMemo(() => {
+    const shouldRenderFooter =
+      isStreamingMore ||
+      showAllHits ||
+      !loadedFullRegions[popularRegion] ||
+      activeQuickTryTracks.length > 5;
+    if (!shouldRenderFooter) return null;
+
+    return (
+      <button
+        type="button"
+        disabled={isStreamingMore}
+        onClick={() => void handleToggleShowMoreHits()}
+        className={`flex w-full touch-manipulation items-center justify-center gap-1.5 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
+          isStreamingMore
+            ? 'cursor-wait opacity-85'
+            : 'cursor-pointer hover:bg-white/[0.03] hover:text-white active:bg-[#2A2A2E]'
+        }`}
+      >
+        {isStreamingMore ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70" aria-hidden="true" />
+            <span className="tabular-nums">
+              Loading {activeQuickTryTracks.length} / {MAX_CHART_TRACKS}…
+            </span>
+          </>
+        ) : showAllHits ? (
+          <>
+            <span>Show less</span>
+            <ChevronUp className="h-4 w-4 text-white/50" aria-hidden="true" />
+          </>
+        ) : (
+          <>
+            <span>Show more</span>
+            <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
+          </>
+        )}
+      </button>
+    );
+  }, [
+    isStreamingMore,
+    showAllHits,
+    loadedFullRegions,
+    popularRegion,
+    activeQuickTryTracks.length,
+    handleToggleShowMoreHits,
+  ]);
+
+  const recentHasPlayingTrack = Boolean(
+    playingTrackId && recentTracks.some((item) => item.id === playingTrackId)
+  );
+  const popularHasPlayingTrack = Boolean(
+    playingTrackId && displayedQuickTryTracks.some((item) => item.id === playingTrackId)
+  );
+
   return (
-    <div className="relative min-h-[100dvh] bg-black text-white">
+    <div className="relative min-h-dvh overflow-x-clip bg-black pb-12 text-white">
       {/* Top Status-Bar / Dynamic Island Fade Shield (zero backdrop-filter) */}
       <div
         aria-hidden="true"
@@ -1361,12 +1435,7 @@ function TrackCodeWorkspace() {
 
       <DynamicIslandToast toast={toast} />
 
-      <div
-        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-[480px] flex-col bg-black pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0"
-        style={{
-          overflow: 'clip',
-        }}
-      >
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-black pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0">
         {/* Breathing Ambient Background Glow behind top ~35% (pure CSS GPU animation) */}
         <div
           aria-hidden="true"
@@ -1395,7 +1464,7 @@ function TrackCodeWorkspace() {
               whileTap={{ scale: 0.95 }}
               transition={SPRING_BUTTON}
               aria-label="Share TrackCode"
-              className="liquid-glass flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-white transition-colors hover:bg-white/[0.1] active:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+              className="liquid-glass flex h-[44px] w-[44px] shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-full text-white transition-colors hover:bg-white/[0.1] active:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
             >
               <Share className="h-[17px] w-[17px] text-[#AEAEB2]" />
             </motion.button>
@@ -1437,7 +1506,7 @@ function TrackCodeWorkspace() {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder={isSearchFocused ? PLACEHOLDER_MESSAGES[0] : ''}
                       aria-label="Search song, artist, or paste Spotify link"
-                      className="min-h-[56px] w-full bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+                      className="min-h-[56px] w-full touch-manipulation bg-transparent px-3 py-3 text-[16px] text-white placeholder:text-white/[0.58] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
                     />
 
                     {query.length === 0 && !isSearchFocused && (
@@ -1480,7 +1549,7 @@ function TrackCodeWorkspace() {
                         <button
                           type="button"
                           onClick={() => void handlePasteFromClipboard()}
-                          className="flex min-h-[36px] min-w-[44px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white transition-[opacity,transform,background-color] duration-150 hover:bg-white/[0.16] active:scale-95 active:bg-white/[0.2]"
+                          className="flex min-h-[36px] min-w-[44px] shrink-0 touch-manipulation cursor-pointer items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.12] px-3.5 text-[13px] font-semibold text-white transition-[opacity,transform,background-color] duration-150 hover:bg-white/[0.16] active:scale-95 active:bg-white/[0.2]"
                         >
                           <ClipboardPaste className="h-3.5 w-3.5 text-[#30D158]" />
                           <span>Paste</span>
@@ -1510,7 +1579,7 @@ function TrackCodeWorkspace() {
                             handleClearInput();
                           }}
                           aria-label="Clear search"
-                          className="relative z-20 flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[#8E8E93] transition-[opacity,transform,background-color] duration-150 active:scale-95 active:bg-white/10 focus-visible:outline-none"
+                          className="relative z-20 flex h-[44px] w-[44px] shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-full text-[#8E8E93] transition-[opacity,transform,background-color] duration-150 active:scale-95 active:bg-white/10 focus-visible:outline-none"
                         >
                           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/25 text-black">
                             <X className="h-3.5 w-3.5 stroke-[2.6]" />
@@ -1567,7 +1636,7 @@ function TrackCodeWorkspace() {
                               rel="noopener noreferrer"
                               whileTap={{ scale: 0.97 }}
                               transition={SPRING_BUTTON}
-                              className="relative mt-4 flex min-h-[48px] w-full items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
+                              className="relative mt-4 flex min-h-[48px] w-full touch-manipulation items-center justify-center gap-2.5 rounded-2xl border border-[#FF453A]/45 bg-[#FF453A]/[0.08] px-4 py-3 text-[14px] font-semibold text-white transition-colors duration-150 hover:bg-[#FF453A]/[0.14] active:bg-[#FF453A]/[0.2] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#FF453A]"
                             >
                               <motion.span
                                 aria-hidden="true"
@@ -1591,7 +1660,7 @@ function TrackCodeWorkspace() {
                               onClick={handleRetry}
                               whileTap={{ scale: 0.97 }}
                               transition={SPRING_BUTTON}
-                              className="relative mt-4 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                              className="relative mt-4 flex min-h-[50px] w-full touch-manipulation cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[16px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
                             >
                               <RotateCcw className="h-4 w-4 stroke-[2.2]" />
                               <span>Try again</span>
@@ -1603,7 +1672,7 @@ function TrackCodeWorkspace() {
                             onClick={handleClearInput}
                             whileTap={{ scale: 0.97 }}
                             transition={SPRING_BUTTON}
-                            className="relative mt-5 flex min-h-[50px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[15px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
+                            className="relative mt-5 flex min-h-[50px] w-full touch-manipulation cursor-pointer items-center justify-center gap-2 rounded-2xl bg-white px-5 text-[15px] font-semibold tracking-[-0.01em] text-black transition-colors duration-150 active:bg-[#2C2C2E] active:text-white focus-visible:outline-none"
                           >
                             <Search className="h-4 w-4 stroke-[2.2]" />
                             <span>Search by song title instead</span>
@@ -1632,7 +1701,7 @@ function TrackCodeWorkspace() {
                             ↑↓ navigate · Enter copy
                           </span>
                         </div>
-                        <div className="touch-pan-y overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+                        <div className="overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
                           {results.map((track, index) => {
                             const isThisActive = playingTrackId === track.id;
                             return (
@@ -1652,7 +1721,7 @@ function TrackCodeWorkspace() {
                                   }
                                   isPreviewPlaying={isThisActive && !isAudioLoading}
                                   isPreviewLoading={isThisActive && isAudioLoading}
-                                  previewProgress={isThisActive ? audioProgress : 0}
+                                  progress={isThisActive ? audioProgress : 0}
                                   onTogglePreview={handleToggleTrackPreview}
                                   onSelect={handleSelectTrack}
                                 />
@@ -1671,7 +1740,7 @@ function TrackCodeWorkspace() {
                         <button
                           type="button"
                           onClick={() => void handleQuickCopyLast()}
-                          className="liquid-glass-strip group flex w-full cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
+                          className="liquid-glass-strip group flex w-full touch-manipulation cursor-pointer items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5 text-left text-xs transition-[transform,background-color] duration-150 hover:bg-white/[0.04] active:scale-[0.985] active:bg-[#2C2C2E]/75 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/25"
                         >
                           <span className="text-xs font-medium text-[#8E8E93]">
                             Last copied
@@ -1693,9 +1762,9 @@ function TrackCodeWorkspace() {
                         ariaLabel="Recent copied tracks"
                         tracks={recentTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
-                        playingTrackId={playingTrackId}
-                        isAudioLoading={isAudioLoading}
-                        audioProgress={audioProgress}
+                        playingTrackId={recentHasPlayingTrack ? playingTrackId : null}
+                        isAudioLoading={recentHasPlayingTrack ? isAudioLoading : false}
+                        audioProgress={recentHasPlayingTrack ? audioProgress : 0}
                         onTogglePreview={handleToggleTrackPreview}
                         onSelect={handleSelectTrack}
                         onClear={handleClearRecent}
@@ -1709,57 +1778,16 @@ function TrackCodeWorkspace() {
                       <TrackListSection
                         title="POPULAR HITS"
                         subtitle="UPDATED DAILY"
-                        headerControl={
-                          <RegionSegmentedToggle
-                            region={popularRegion}
-                            onChange={handleRegionChange}
-                          />
-                        }
-                        footerControl={
-                          isStreamingMore ||
-                          showAllHits ||
-                          !loadedFullRegions[popularRegion] ||
-                          activeQuickTryTracks.length > 5 ? (
-                            <button
-                              type="button"
-                              disabled={isStreamingMore}
-                              onClick={() => void handleToggleShowMoreHits()}
-                              className={`flex w-full items-center justify-center gap-1.5 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
-                                isStreamingMore
-                                  ? 'cursor-wait opacity-85'
-                                  : 'cursor-pointer hover:bg-white/[0.03] hover:text-white active:bg-[#2A2A2E]'
-                              }`}
-                            >
-                              {isStreamingMore ? (
-                                <>
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin text-white/70" aria-hidden="true" />
-                                  <span className="tabular-nums">
-                                    Loading {activeQuickTryTracks.length} / {MAX_CHART_TRACKS}…
-                                  </span>
-                                </>
-                              ) : showAllHits ? (
-                                <>
-                                  <span>Show less</span>
-                                  <ChevronUp className="h-4 w-4 text-white/50" aria-hidden="true" />
-                                </>
-                              ) : (
-                                <>
-                                  <span>Show more</span>
-                                  <ChevronDown className="h-4 w-4 text-white/50" aria-hidden="true" />
-                                </>
-                              )}
-                            </button>
-                          ) : null
-                        }
+                        headerControl={popularHeaderControl}
+                        footerControl={popularFooterControl}
                         listKeyPrefix={popularRegion}
                         ariaLabel="Popular Hits"
                         tracks={displayedQuickTryTracks}
                         selectedTrackId={isDesktop ? activeDesktopTrack?.id : sheetTrack?.id}
-                        playingTrackId={playingTrackId}
-                        isAudioLoading={isAudioLoading}
-                        audioProgress={audioProgress}
+                        playingTrackId={popularHasPlayingTrack ? playingTrackId : null}
+                        isAudioLoading={popularHasPlayingTrack ? isAudioLoading : false}
+                        audioProgress={popularHasPlayingTrack ? audioProgress : 0}
                         showRanks={true}
-                        isExpandedScroll={showAllHits}
                         isLoading={isQuickTryLoading}
                         skeletonCount={5}
                         onTogglePreview={handleToggleTrackPreview}
@@ -1831,41 +1859,39 @@ function TrackCodeWorkspace() {
 
       {/* Mobile-Only Slide-Up Bottom Sheet (< 1024px) */}
       <div className="lg:hidden">
-        <Suspense fallback={null}>
-          <BottomSheet
-            track={isDesktop ? null : sheetTrack}
-            autoCopiedSignal={autoCopiedSignal}
-            isFetchingIsrc={
-              Boolean(sheetTrack?.id) && fetchingIsrcTrackId === sheetTrack?.id
-            }
-            previewUrl={!isDesktop && sheetTrack ? activePreviewUrl : null}
-            isAudioPlaying={
-              !isDesktop &&
-              Boolean(sheetTrack?.id) &&
-              playingTrackId === sheetTrack?.id &&
-              !isAudioLoading
-            }
-            isAudioLoading={
-              !isDesktop &&
-              Boolean(sheetTrack?.id) &&
-              playingTrackId === sheetTrack?.id &&
-              isAudioLoading
-            }
-            audioProgress={
-              !isDesktop &&
-              sheetTrack?.id &&
-              (playingTrackId === sheetTrack.id || loadedTrackId === sheetTrack.id)
-                ? audioProgress
-                : 0
-            }
-            getAudioGainMultiplier={getAudioGainMultiplier}
-            onTogglePreview={handleToggleInspectorPreview}
-            onClose={handleCloseSheet}
-            onCopied={handleInspectorCopied}
-            onCopyFailed={handleInspectorCopyFailed}
-            onSearchOtherVersions={handleSearchOtherVersions}
-          />
-        </Suspense>
+        <BottomSheet
+          track={isDesktop ? null : sheetTrack}
+          autoCopiedSignal={autoCopiedSignal}
+          isFetchingIsrc={
+            Boolean(sheetTrack?.id) && fetchingIsrcTrackId === sheetTrack?.id
+          }
+          previewUrl={!isDesktop && sheetTrack ? activePreviewUrl : null}
+          isAudioPlaying={
+            !isDesktop &&
+            Boolean(sheetTrack?.id) &&
+            playingTrackId === sheetTrack?.id &&
+            !isAudioLoading
+          }
+          isAudioLoading={
+            !isDesktop &&
+            Boolean(sheetTrack?.id) &&
+            playingTrackId === sheetTrack?.id &&
+            isAudioLoading
+          }
+          audioProgress={
+            !isDesktop &&
+            sheetTrack?.id &&
+            (playingTrackId === sheetTrack.id || loadedTrackId === sheetTrack.id)
+              ? audioProgress
+              : 0
+          }
+          getAudioGainMultiplier={getAudioGainMultiplier}
+          onTogglePreview={handleToggleInspectorPreview}
+          onClose={handleCloseSheet}
+          onCopied={handleInspectorCopied}
+          onCopyFailed={handleInspectorCopyFailed}
+          onSearchOtherVersions={handleSearchOtherVersions}
+        />
       </div>
     </div>
   );

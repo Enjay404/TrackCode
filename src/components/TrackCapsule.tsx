@@ -30,7 +30,7 @@ export interface TrackCapsuleProps {
   showRank?: boolean;
   isPreviewPlaying?: boolean;
   isPreviewLoading?: boolean;
-  previewProgress?: number;
+  progress?: number;
   onTogglePreview?: (track: TrackItem) => void;
   onSelect: (track: TrackItem, copied: boolean) => void;
 }
@@ -41,7 +41,7 @@ export const TrackCapsule = memo(function TrackCapsule({
   showRank = false,
   isPreviewPlaying = false,
   isPreviewLoading = false,
-  previewProgress = 0,
+  progress = 0,
   onTogglePreview,
   onSelect,
 }: TrackCapsuleProps) {
@@ -93,7 +93,7 @@ export const TrackCapsule = memo(function TrackCapsule({
       aria-current={isSelected ? 'true' : undefined}
       onClick={() => void handleTap()}
       onKeyDown={handleRowKeyDown}
-      className={`group relative flex w-full touch-pan-y cursor-pointer items-center gap-3.5 px-3.5 py-2.5 text-left transition-[transform,background-color] duration-150 ease-out hover:bg-white/[0.03] active:scale-[0.99] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
+      className={`group relative flex w-full touch-manipulation cursor-pointer items-center gap-3.5 px-3.5 py-2.5 text-left transition-colors duration-100 hover:bg-white/[0.03] active:bg-[#2A2A2E] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
         isSelected ? 'bg-white/[0.05]' : ''
       }`}
     >
@@ -146,7 +146,7 @@ export const TrackCapsule = memo(function TrackCapsule({
                 onTogglePreview(track);
               }}
               aria-label={isPreviewPlaying ? 'Pause preview' : 'Play 30-second preview'}
-              className="group/preview pointer-events-auto relative z-10 -m-2 flex cursor-pointer items-center justify-center p-2 focus-visible:outline-none"
+              className="group/preview touch-manipulation pointer-events-auto relative z-10 -m-2 flex cursor-pointer items-center justify-center p-2 focus-visible:outline-none"
             >
               <span
                 className={`relative flex h-6 w-6 items-center justify-center rounded-full bg-white/22 text-white shadow-[0_2px_6px_rgba(0,0,0,0.35)] transition-[transform,opacity,background-color] duration-150 hover:bg-white/34 group-hover/preview:bg-white/34 group-focus-visible/preview:ring-2 group-focus-visible/preview:ring-white/70 active:scale-90 ${
@@ -181,7 +181,7 @@ export const TrackCapsule = memo(function TrackCapsule({
                         strokeDasharray={CAPSULE_RING_CIRCUMFERENCE}
                         strokeDashoffset={
                           CAPSULE_RING_CIRCUMFERENCE *
-                          (1 - Math.min(1, Math.max(0, previewProgress)))
+                          (1 - Math.min(1, Math.max(0, progress)))
                         }
                       />
                     )}
