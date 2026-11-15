@@ -519,7 +519,6 @@ function TrackCodeWorkspace() {
   const [lastCopied, setLastCopied] = useState<LastCopiedEntry | null>(() => loadLastCopied());
   const [isLastCopiedSuccess, setIsLastCopiedSuccess] = useState(false);
   const lastCopiedTimerRef = useRef<number | null>(null);
-  const [isPageScrolled, setIsPageScrolled] = useState(false);
 
   const isOnline = useOnlineStatus();
   const trimmedQuery = query.trim();
@@ -832,16 +831,6 @@ function TrackCodeWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      const nextScrolled = window.scrollY > 12;
-      setIsPageScrolled((prev) => (prev === nextScrolled ? prev : nextScrolled));
-    };
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
@@ -1663,17 +1652,9 @@ function TrackCodeWorkspace() {
 
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-[#09090B] pb-8 text-white">
-      {/* Top Status-Bar / Dynamic Island Fade Shield when scrolled (zero backdrop-filter) */}
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+16px)] bg-gradient-to-b from-[#09090B] via-[#09090B]/90 to-transparent transition-opacity duration-200 lg:hidden ${
-          isPageScrolled ? 'opacity-100' : 'opacity-0'
-        }`}
-      />
-
       <DynamicIslandToast toast={toast} />
 
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-transparent pt-[calc(env(safe-area-inset-top,0px)+14px)] lg:max-w-5xl lg:px-8 lg:pt-0">
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-transparent lg:max-w-5xl lg:px-8">
         {/* Breathing Ambient Background Glow behind top ~35% (pure CSS GPU animation) */}
         <div
           aria-hidden="true"
@@ -1686,7 +1667,7 @@ function TrackCodeWorkspace() {
         />
 
         {/* Responsive Header: Mobile Large Title / Desktop Top Bar */}
-        <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-1 pb-3 lg:px-0 lg:pt-8 lg:pb-6">
+        <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-2 lg:px-0 lg:pt-8 lg:pb-6">
           <h1 className="flex items-center">
             <span className="sr-only">TrackCode — ISRC Finder</span>
             <BrandLogo className="h-[44px] sm:h-[48px]" />
@@ -1715,16 +1696,13 @@ function TrackCodeWorkspace() {
           <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-7">
             {/* Left Column (Desktop col-span-7) / Mobile Full Column */}
             <div className="lg:col-span-7">
-              {/* Hero Search Capsule (Sticky on Mobile, seamless gradient backdrop when scrolled, Static on Desktop) */}
-              <div
-                className={`sticky top-0 z-20 px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-2.5 transition-colors duration-200 lg:static lg:mb-4 lg:bg-transparent lg:px-0 lg:py-0 ${
-                  isPageScrolled ? 'bg-[#09090B]' : 'bg-transparent'
-                }`}
-              >
-                <form
-                  onSubmit={handleSearchSubmit}
-                  className="group relative flex h-[56px] sm:h-[60px] items-center gap-3 rounded-[20px] border border-white/[0.12] border-t-white/[0.22] bg-[#1C1C1E] px-4 shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_0_1px_rgba(48,209,88,0.06)] transition-[border-color,background-color,box-shadow] duration-200 ease-out focus-within:border-[#30D158]/45 focus-within:bg-[#202221] focus-within:shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_24px_rgba(48,209,88,0.16),0_0_0_1px_rgba(48,209,88,0.22)]"
-                >
+              {/* Hero Search Capsule (Transparent Floating Sticky on Mobile, Static on Desktop) */}
+              <div className="pointer-events-none sticky top-[calc(env(safe-area-inset-top,0px)+8px)] z-20 bg-transparent px-4 py-1.5 lg:static lg:mb-4 lg:px-0 lg:py-0">
+                <div className="pointer-events-auto">
+                  <form
+                    onSubmit={handleSearchSubmit}
+                    className="group relative flex h-[56px] sm:h-[60px] items-center gap-3 rounded-[20px] border border-white/[0.12] border-t-white/[0.22] bg-[#161618]/[0.94] px-4 shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_0_1px_rgba(48,209,88,0.06)] transition-[border-color,background-color,box-shadow] duration-200 ease-out focus-within:border-[#30D158]/45 focus-within:bg-[#1D201E]/[0.96] focus-within:shadow-[0_14px_34px_rgba(0,0,0,0.6),0_0_24px_rgba(48,209,88,0.16),0_0_0_1px_rgba(48,209,88,0.22)]"
+                  >
                   {query.length === 0 && (
                     <div
                       aria-hidden="true"
@@ -1837,7 +1815,8 @@ function TrackCodeWorkspace() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </form>
+                  </form>
+                </div>
               </div>
 
               {/* Search Results / Home Track Lists */}
