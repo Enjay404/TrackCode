@@ -22,16 +22,13 @@ interface BottomSheetProps {
   onSearchOtherVersions: (track: TrackItem) => void;
 }
 
-const SHEET_OPEN_MS = 280;
-const SHEET_CLOSE_MS = 250;
+const SHEET_OPEN_MS = 260;
+const SHEET_BACKDROP_MS = 200;
+const SHEET_CLOSE_MS = 240;
 const SHEET_CLOSE_FALLBACK_MS = 260;
-const SHEET_SNAP_MS = 360;
+const SHEET_SNAP_MS = 340;
 
-interface BottomSheetPanelProps extends Omit<BottomSheetProps, 'track'> {
-  track: TrackItem;
-}
-
-const BottomSheetPanel = memo(function BottomSheetPanel({
+export const BottomSheet = memo(function BottomSheet({
   track,
   autoCopiedSignal,
   isFetchingIsrc = false,
@@ -45,10 +42,21 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
   onCopied,
   onCopyFailed,
   onSearchOtherVersions,
-}: BottomSheetPanelProps) {
+}: BottomSheetProps) {
+  const isOpen = Boolean(track);
+  const [retainedTrack, setRetainedTrack] = useState<TrackItem | null>(track);
+  const displayTrack = track ?? retainedTrack;
+
+  useEffect(() => {
+    if (track) {
+      setRetainedTrack(track);
+    }
+  }, [track]);
+
   const [glowRgb, setGlowRgb] = useState<string>('110, 110, 128');
   const [glowReady, setGlowReady] = useState(false);
 
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
@@ -57,11 +65,15 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   const isClosingRef = useRef(false);
   const closeCleanupRef = useRef<(() => void) | null>(null);
   const snapCleanupRef = useRef<(() => void) | null>(null);
+  const openCleanupRef = useRef<(() => void) | null>(null);
   const triggerElementRef = useRef<HTMLElement | null>(null);
+  const prevScrollLockRef = useRef<{ overflow: string; overscrollY: string } | null>(null);
 
   const gestureRef = useRef<{
     startY: number;
@@ -87,6 +99,24 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     rafId: null,
   });
 
+  const lockBodyScroll = useCallback(() => {
+    if (typeof document === 'undefined' || prevScrollLockRef.current !== null) return;
+    prevScrollLockRef.current = {
+      overflow: document.body.style.overflow,
+      overscrollY: document.documentElement.style.overscrollBehaviorY,
+    };
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehaviorY = 'none';
+  }, []);
+
+  const unlockBodyScroll = useCallback(() => {
+    if (typeof document === 'undefined' || prevScrollLockRef.current === null) return;
+    const prev = prevScrollLockRef.current;
+    prevScrollLockRef.current = null;
+    document.body.style.overflow = prev.overflow;
+    document.documentElement.style.overscrollBehaviorY = prev.overscrollY;
+  }, []);
+
   const clearPendingRaf = useCallback(() => {
     const g = gestureRef.current;
     if (g.rafId !== null) {
@@ -95,11 +125,39 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     }
   }, []);
 
+  const parkClosedLayer = useCallback(() => {
+    const wrapperEl = wrapperRef.current;
+    const sheetEl = sheetRef.current;
+    const backdropEl = backdropRef.current;
+
+    if (wrapperEl) {
+      wrapperEl.style.visibility = 'hidden';
+      wrapperEl.style.pointerEvents = 'none';
+    }
+    if (sheetEl) {
+      sheetEl.style.transition = 'none';
+      sheetEl.style.transform = 'translate3d(0, 100%, 0)';
+    }
+    if (backdropEl) {
+      backdropEl.style.transition = 'none';
+      backdropEl.style.opacity = '0';
+    }
+    if (scrollContentRef.current) {
+      scrollContentRef.current.scrollTop = 0;
+    }
+    gestureRef.current.currentTranslateY = 0;
+    gestureRef.current.isDragging = false;
+    gestureRef.current.hasMoved = false;
+    isClosingRef.current = false;
+  }, []);
+
   const dismissWithAnimation = useCallback(() => {
-    if (isClosingRef.current) return;
+    if (isClosingRef.current || !isOpenRef.current) return;
     isClosingRef.current = true;
     gestureRef.current.isDragging = false;
     clearPendingRaf();
+    openCleanupRef.current?.();
+    openCleanupRef.current = null;
     snapCleanupRef.current?.();
     snapCleanupRef.current = null;
 
@@ -114,6 +172,8 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (!sheetEl || prefersReducedMotion) {
+      parkClosedLayer();
+      unlockBodyScroll();
       onCloseRef.current();
       return;
     }
@@ -124,6 +184,8 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       finished = true;
       closeCleanupRef.current?.();
       closeCleanupRef.current = null;
+      parkClosedLayer();
+      unlockBodyScroll();
       onCloseRef.current();
     };
 
@@ -142,12 +204,12 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     };
 
     if (backdropEl) {
-      backdropEl.style.transition = 'opacity 220ms ease-out';
+      backdropEl.style.transition = `opacity ${SHEET_BACKDROP_MS}ms ease-out`;
       backdropEl.style.opacity = '0';
     }
     sheetEl.style.transition = `transform ${SHEET_CLOSE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`;
     sheetEl.style.transform = 'translate3d(0, 100%, 0)';
-  }, [clearPendingRaf]);
+  }, [clearPendingRaf, parkClosedLayer, unlockBodyScroll]);
 
   const snapBackWithSpring = useCallback(() => {
     const sheetEl = sheetRef.current;
@@ -203,23 +265,59 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     sheetEl.style.transition = `transform ${SHEET_SNAP_MS}ms cubic-bezier(0.22, 1.18, 0.36, 1)`;
     sheetEl.style.transform = 'translate3d(0, 0, 0)';
     if (backdropEl) {
-      backdropEl.style.transition = 'opacity 240ms ease-out';
+      backdropEl.style.transition = `opacity ${SHEET_BACKDROP_MS}ms ease-out`;
       backdropEl.style.opacity = '1';
     }
     gestureRef.current.currentTranslateY = 0;
   }, []);
 
-  // Mount at translate3d(0, 100%, 0) + opacity: 0, then glide up on next animation frame
+  // Pre-mounted GPU sheet open/close choreography using double-rAF
   useLayoutEffect(() => {
+    const wrapperEl = wrapperRef.current;
     const sheetEl = sheetRef.current;
     const backdropEl = backdropRef.current;
-    if (!sheetEl) return;
+    if (!wrapperEl || !sheetEl) return;
+
+    openCleanupRef.current?.();
+    openCleanupRef.current = null;
+
+    if (!isOpen) {
+      unlockBodyScroll();
+      closeCleanupRef.current?.();
+      closeCleanupRef.current = null;
+      snapCleanupRef.current?.();
+      snapCleanupRef.current = null;
+      parkClosedLayer();
+
+      const prevTrigger = triggerElementRef.current;
+      triggerElementRef.current = null;
+      if (prevTrigger && typeof prevTrigger.focus === 'function' && document.contains(prevTrigger)) {
+        window.setTimeout(() => {
+          prevTrigger.focus({ preventScroll: true });
+        }, 20);
+      }
+      return;
+    }
+
+    isClosingRef.current = false;
+    closeCleanupRef.current?.();
+    closeCleanupRef.current = null;
+    snapCleanupRef.current?.();
+    snapCleanupRef.current = null;
 
     const activeEl = document.activeElement as HTMLElement | null;
     if (activeEl && activeEl.tagName !== 'INPUT' && activeEl.tagName !== 'TEXTAREA') {
       triggerElementRef.current = activeEl;
     } else {
       triggerElementRef.current = null;
+    }
+
+    lockBodyScroll();
+    wrapperEl.style.visibility = 'visible';
+    wrapperEl.style.pointerEvents = 'auto';
+
+    if (scrollContentRef.current) {
+      scrollContentRef.current.scrollTop = 0;
     }
 
     const prefersReducedMotion =
@@ -244,68 +342,72 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     }
 
     let raf2: number | null = null;
+    let settleTimer: number | null = null;
+
     const raf1 = window.requestAnimationFrame(() => {
       raf2 = window.requestAnimationFrame(() => {
-        if (isClosingRef.current) return;
+        if (isClosingRef.current || !isOpenRef.current) return;
         if (backdropRef.current) {
-          backdropRef.current.style.transition = 'opacity 240ms ease-out';
+          backdropRef.current.style.transition = `opacity ${SHEET_BACKDROP_MS}ms ease-out`;
           backdropRef.current.style.opacity = '1';
         }
         if (sheetRef.current) {
           sheetRef.current.style.transition = `transform ${SHEET_OPEN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
           sheetRef.current.style.transform = 'translate3d(0, 0, 0)';
         }
+        settleTimer = window.setTimeout(() => {
+          if (!gestureRef.current.isDragging && !isClosingRef.current && isOpenRef.current) {
+            if (sheetRef.current) sheetRef.current.style.transition = '';
+            if (backdropRef.current) backdropRef.current.style.transition = '';
+          }
+        }, SHEET_OPEN_MS + 30);
       });
     });
 
-    const settleTimer = window.setTimeout(() => {
-      if (!gestureRef.current.isDragging && !isClosingRef.current) {
-        if (sheetRef.current) sheetRef.current.style.transition = '';
-        if (backdropRef.current) backdropRef.current.style.transition = '';
-      }
-    }, SHEET_OPEN_MS + 30);
-
-    return () => {
+    const cleanupOpen = () => {
       window.cancelAnimationFrame(raf1);
       if (raf2 !== null) window.cancelAnimationFrame(raf2);
-      window.clearTimeout(settleTimer);
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
-  }, []);
+    openCleanupRef.current = cleanupOpen;
 
-  // Body scroll lock, Escape dismiss, and focus restoration
+    return cleanupOpen;
+  }, [isOpen, lockBodyScroll, parkClosedLayer, unlockBodyScroll]);
+
+  // Escape key dismissal while open
   useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
+    if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         dismissWithAnimation();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-
     return () => {
-      document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, dismissWithAnimation]);
+
+  // Cleanup scroll lock and pending frames/timers only on unmount
+  useEffect(() => {
+    return () => {
+      unlockBodyScroll();
       clearPendingRaf();
+      openCleanupRef.current?.();
       closeCleanupRef.current?.();
       snapCleanupRef.current?.();
-
-      const prevTrigger = triggerElementRef.current;
-      triggerElementRef.current = null;
-      if (prevTrigger && typeof prevTrigger.focus === 'function' && document.contains(prevTrigger)) {
-        window.setTimeout(() => {
-          prevTrigger.focus({ preventScroll: true });
-        }, 20);
-      }
     };
-  }, [clearPendingRaf, dismissWithAnimation]);
+  }, [clearPendingRaf, unlockBodyScroll]);
 
   // Extract album art dominant glow after sheet slide-up completes
+  const targetArtUrl = track ? track.albumArt.medium || track.albumArt.large : null;
   useEffect(() => {
+    if (!targetArtUrl) {
+      setGlowReady(false);
+      return;
+    }
     let cancelled = false;
     setGlowReady(false);
-    const targetArtUrl = track.albumArt.medium || track.albumArt.large;
     const deferTimer = window.setTimeout(() => {
       void extractDominantColorRgb(targetArtUrl).then((rgb) => {
         if (!cancelled) {
@@ -319,7 +421,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       cancelled = true;
       window.clearTimeout(deferTimer);
     };
-  }, [track.albumArt.medium, track.albumArt.large]);
+  }, [targetArtUrl]);
 
   // Zero-re-render 1:1 GPU touch gesture recognizer (with non-passive touchmove)
   useEffect(() => {
@@ -327,12 +429,14 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     if (!sheetEl) return;
 
     const startDragAt = (clientY: number, target: EventTarget | null) => {
-      if (isClosingRef.current) return;
+      if (isClosingRef.current || !isOpenRef.current) return;
       if (target instanceof HTMLElement && target.closest('[data-sheet-close="true"]')) {
         return;
       }
 
       clearPendingRaf();
+      openCleanupRef.current?.();
+      openCleanupRef.current = null;
       snapCleanupRef.current?.();
       snapCleanupRef.current = null;
 
@@ -378,7 +482,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       clearPendingRaf();
       gestureRef.current.rafId = window.requestAnimationFrame(() => {
         gestureRef.current.rafId = null;
-        if (!sheetRef.current || isClosingRef.current) return;
+        if (!sheetRef.current || isClosingRef.current || !isOpenRef.current) return;
         sheetRef.current.style.transform = `translate3d(0, ${translateY}px, 0)`;
         if (backdropRef.current) {
           backdropRef.current.style.opacity =
@@ -397,7 +501,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       g.isDragging = false;
       clearPendingRaf();
 
-      if (isClosingRef.current) return;
+      if (isClosingRef.current || !isOpenRef.current) return;
 
       if (!g.hasMoved) {
         sheetEl.style.transition = '';
@@ -428,7 +532,9 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
 
     const handleTouchMove = (e: TouchEvent) => {
       const g = gestureRef.current;
-      if (!g.isDragging || isClosingRef.current || e.touches.length !== 1) return;
+      if (!g.isDragging || isClosingRef.current || !isOpenRef.current || e.touches.length !== 1) {
+        return;
+      }
 
       const touchY = e.touches[0].clientY;
       const deltaY = touchY - g.startY;
@@ -443,7 +549,6 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
         return;
       }
 
-      // Let overflowing inner content scroll naturally on very short viewports when dragging up from inside
       if (deltaY < 0 && hasInnerScroll && !g.startedOnGrabHandle && !g.hasMoved) {
         g.isDragging = false;
         return;
@@ -453,7 +558,6 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
         e.preventDefault();
       }
 
-      // Keep small tap jitter (< 3px) from cancelling button taps
       if (!g.hasMoved && Math.abs(deltaY) < 3) {
         return;
       }
@@ -493,7 +597,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
     const handlePointerMove = (e: PointerEvent) => {
       if (e.pointerType === 'touch' || mousePointerId !== e.pointerId) return;
       const g = gestureRef.current;
-      if (!g.isDragging || isClosingRef.current) return;
+      if (!g.isDragging || isClosingRef.current || !isOpenRef.current) return;
 
       const deltaY = e.clientY - g.startY;
       if (!g.hasMoved && Math.abs(deltaY) < 3) return;
@@ -544,23 +648,33 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center"
+      ref={wrapperRef}
+      style={{
+        visibility: 'hidden',
+        pointerEvents: 'none',
+        overscrollBehavior: 'none',
+      }}
+      className="fixed inset-0 z-40 flex items-end justify-center overscroll-none"
       role="dialog"
-      aria-modal="true"
-      aria-label={track.name || 'Track details'}
+      aria-modal={isOpen ? 'true' : undefined}
+      aria-hidden={!isOpen}
+      aria-label={displayTrack?.name || 'Track details'}
     >
-      {/* Translucent modal backdrop (zero backdrop-filter) */}
+      {/* Translucent modal backdrop (zero backdrop-filter, pre-mounted GPU layer) */}
       <div
         ref={backdropRef}
         onClick={dismissWithAnimation}
-        className="fixed inset-0 bg-black/75"
+        style={{ opacity: 0, overscrollBehavior: 'none' }}
+        className="fixed inset-0 overscroll-none bg-black/75 will-change-[opacity]"
       />
 
-      {/* GPU-composited #1C1C1E bottom sheet */}
+      {/* Pre-mounted GPU-composited #1C1C1E bottom sheet */}
       <div
         ref={sheetRef}
         style={{
+          transform: 'translate3d(0, 100%, 0)',
           backfaceVisibility: 'hidden',
+          overscrollBehavior: 'none',
           paddingBottom: 'calc(max(24px, env(safe-area-inset-bottom)) + 48px)',
           marginBottom: '-48px',
           backgroundColor: '#1C1C1E',
@@ -568,7 +682,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
             'linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(28, 28, 30, 0) 32%)',
           borderTop: '1px solid rgba(255, 255, 255, 0.14)',
         }}
-        className="relative z-10 w-full max-w-[480px] will-change-transform overflow-hidden rounded-t-[28px] px-5 pt-0 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
+        className="relative z-10 w-full max-w-[480px] overscroll-none will-change-transform overflow-hidden rounded-t-[28px] px-5 pt-0 shadow-[0_-16px_48px_rgba(0,0,0,0.75)]"
       >
         {/* Ambient radial glow tinted with album cover dominant color */}
         <div
@@ -594,6 +708,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
           <motion.button
             type="button"
             data-sheet-close="true"
+            tabIndex={isOpen ? 0 : -1}
             onClick={(e) => {
               e.stopPropagation();
               dismissWithAnimation();
@@ -611,24 +726,27 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
 
         <div
           ref={scrollContentRef}
-          className="max-h-[calc(88dvh-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain"
+          style={{ overscrollBehavior: 'none' }}
+          className="max-h-[calc(88dvh-env(safe-area-inset-bottom))] overflow-y-auto overscroll-none"
         >
-          <IsrcInspector
-            variant="mobile"
-            track={track}
-            copiedSignal={autoCopiedSignal}
-            isActive={true}
-            isFetchingIsrc={isFetchingIsrc}
-            previewUrl={previewUrl}
-            isAudioPlaying={isAudioPlaying}
-            isAudioLoading={isAudioLoading}
-            audioProgress={audioProgress}
-            getAudioGainMultiplier={getAudioGainMultiplier}
-            onTogglePreview={onTogglePreview}
-            onCopied={onCopied}
-            onCopyFailed={onCopyFailed}
-            onSearchOtherVersions={onSearchOtherVersions}
-          />
+          {displayTrack && (
+            <IsrcInspector
+              variant="mobile"
+              track={displayTrack}
+              copiedSignal={autoCopiedSignal}
+              isActive={isOpen}
+              isFetchingIsrc={isFetchingIsrc}
+              previewUrl={previewUrl}
+              isAudioPlaying={isAudioPlaying}
+              isAudioLoading={isAudioLoading}
+              audioProgress={audioProgress}
+              getAudioGainMultiplier={getAudioGainMultiplier}
+              onTogglePreview={onTogglePreview}
+              onCopied={onCopied}
+              onCopyFailed={onCopyFailed}
+              onSearchOtherVersions={onSearchOtherVersions}
+            />
+          )}
 
           {/* Matching Creator Footer inside Bottom Sheet */}
           <div className="mt-4 flex justify-center">
@@ -636,6 +754,7 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
               href="https://instagram.com/enjay404"
               target="_blank"
               rel="noopener noreferrer"
+              tabIndex={isOpen ? 0 : -1}
               className="inline-flex min-h-[40px] touch-manipulation items-center gap-1.5 rounded-full border border-white/10 bg-[#2C2C2E]/65 px-3.5 py-1.5 text-[12px] text-[#AEAEB2] transition-[transform,color,background-color] duration-150 hover:bg-[#2C2C2E] hover:text-white active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
             >
               <span>Made with ❤️ by</span>
@@ -646,17 +765,6 @@ const BottomSheetPanel = memo(function BottomSheetPanel({
       </div>
     </div>
   );
-});
-
-export const BottomSheet = memo(function BottomSheet({
-  track,
-  ...rest
-}: BottomSheetProps) {
-  if (!track) {
-    return null;
-  }
-
-  return <BottomSheetPanel track={track} {...rest} />;
 });
 
 export default BottomSheet;

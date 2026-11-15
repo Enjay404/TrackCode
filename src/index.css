@@ -15,6 +15,13 @@
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: contain;
   }
+
+  button,
+  a,
+  input,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 }
 
 .font-mono-isrc {

@@ -21,7 +21,7 @@ const PREVIEW_RING_CIRCUMFERENCE = 2 * Math.PI * PREVIEW_RING_RADIUS;
 
 const AUTO_COPY_RESET_MS = 1600;
 const MANUAL_COPY_RESET_MS = 2000;
-const SHEET_DURATION_MS = 280;
+const SHEET_DURATION_MS = 260;
 
 export interface IsrcInspectorProps {
   variant: 'desktop' | 'mobile';
@@ -58,8 +58,6 @@ export const IsrcInspector = memo(function IsrcInspector({
 }: IsrcInspectorProps) {
   const isDesktop = variant === 'desktop';
   const artSrc = track.albumArt.medium || track.albumArt.large || null;
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [loadedArtSrc, setLoadedArtSrc] = useState<string | null>(null);
   const [failedArtSrc, setFailedArtSrc] = useState<string | null>(null);
   const [copiedState, setCopiedState] = useState(false);
   const [pulseCount, setPulseCount] = useState(0);
@@ -68,15 +66,7 @@ export const IsrcInspector = memo(function IsrcInspector({
   );
 
   const copyTimerRef = useRef<number | null>(null);
-  const imgLoaded = Boolean(artSrc && loadedArtSrc === artSrc);
   const imgError = Boolean(artSrc && failedArtSrc === artSrc);
-
-  useEffect(() => {
-    const img = imgRef.current;
-    if (artSrc && img && img.complete && img.naturalWidth > 0) {
-      setLoadedArtSrc(artSrc);
-    }
-  }, [artSrc]);
 
   useEffect(() => {
     return () => {
@@ -178,38 +168,19 @@ export const IsrcInspector = memo(function IsrcInspector({
       <div className="relative flex items-center gap-4">
         <div
           className={`relative shrink-0 overflow-hidden bg-[#2C2C2E] shadow-[0_8px_24px_rgba(0,0,0,0.5)] ring-1 ring-white/10 ${
-            isDesktop ? 'h-24 w-24 rounded-2xl' : 'h-[88px] w-[88px] rounded-[14px]'
+            isDesktop ? 'h-24 w-24 rounded-2xl' : 'h-[80px] w-[80px] rounded-[14px]'
           }`}
         >
-          {artSrc && !imgLoaded && !imgError && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 overflow-hidden bg-[#2C2C2E]"
-            >
-              <div
-                className="animate-skeleton-sweep h-full w-full"
-                style={{
-                  background:
-                    'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%)',
-                }}
-              />
-            </div>
-          )}
-
           {artSrc && !imgError ? (
             <img
-              ref={imgRef}
               src={artSrc}
               alt=""
-              width={isDesktop ? 96 : 88}
-              height={isDesktop ? 96 : 88}
+              width={isDesktop ? 96 : 80}
+              height={isDesktop ? 96 : 80}
               referrerPolicy="no-referrer"
               decoding="async"
-              onLoad={() => setLoadedArtSrc(artSrc)}
               onError={() => setFailedArtSrc(artSrc)}
-              className={`h-full w-full object-cover transition-opacity duration-200 ease-out ${
-                imgLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
+              className="h-full w-full object-cover"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-[#2C2C2E] text-white/30">

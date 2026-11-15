@@ -13,9 +13,9 @@ const QUICK_TRY_STORAGE_KEY = 'trackcode_quick_try_v4';
 const CHART_HISTORY_STORAGE_KEY = 'trackcode_chart_history_v2';
 const ISRC_CACHE_STORAGE_KEY = 'trackcode_isrc_cache_v1';
 const MAX_RECENT_TRACKS = 8;
-const MAX_SEARCH_CACHE_ENTRIES = 40;
+const MAX_SEARCH_CACHE_ENTRIES = 60;
 const MAX_ISRC_CACHE_ENTRIES = 120;
-const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const PREVIEW_CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_PREVIEW_CACHE_ENTRIES = 120;
 

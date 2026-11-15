@@ -67,6 +67,7 @@ export function AddToHomeModal({ isOpen, isIOSInApp, onClose }: AddToHomeModalPr
                   alt="TrackCode app icon"
                   width={44}
                   height={44}
+                  decoding="async"
                   className="h-11 w-11 shrink-0 rounded-[11px] border border-white/[0.14] object-cover shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
                 />
                 <div className="min-w-0">

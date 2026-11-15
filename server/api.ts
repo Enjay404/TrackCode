@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AlbumType, ChartRegion, TrackItem } from '../src/types/track.js';
 
-const UPSTREAM_TIMEOUT_MS = 8000;
+const UPSTREAM_TIMEOUT_MS = 4000;
 
 class SpotifyRateLimitError extends Error {
   readonly retryAfterSeconds: number;
@@ -336,7 +336,7 @@ async function extractTitleFromSpotifyOembed(rawQuery: string): Promise<string |
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     }).then(async (res) => (res.ok ? ((await res.json()) as { title?: string }) : null)),
     fetch(targetUrl, {
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (compatible; TrackCodeBot/1.0; +https://trackcode.vercel.app)',
@@ -413,27 +413,27 @@ async function searchDeezerTracks(
     return items.map((item) => normalizeDeezerTrack(item, true));
   }
 
-  const detailed = await Promise.all(
+  const settledDetails = await Promise.allSettled(
     items.map(async (item) => {
-      try {
-        const trackRes = await fetch(`https://api.deezer.com/track/${item.id}`, {
-          signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-        });
-        if (!trackRes.ok) {
-          return normalizeDeezerTrack(item, true);
-        }
-        const detail = (await trackRes.json()) as DeezerTrackDetail & { error?: unknown };
-        if (!detail || detail.error || !detail.id) {
-          return normalizeDeezerTrack(item, true);
-        }
-        return normalizeDeezerTrack(detail, true);
-      } catch {
+      const trackRes = await fetch(`https://api.deezer.com/track/${item.id}`, {
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!trackRes.ok) {
         return normalizeDeezerTrack(item, true);
       }
+      const detail = (await trackRes.json()) as DeezerTrackDetail & { error?: unknown };
+      if (!detail || detail.error || !detail.id) {
+        return normalizeDeezerTrack(item, true);
+      }
+      return normalizeDeezerTrack(detail, true);
     })
   );
 
-  return detailed;
+  return settledDetails.map((outcome, index) =>
+    outcome.status === 'fulfilled'
+      ? outcome.value
+      : normalizeDeezerTrack(items[index], true)
+  );
 }
 
 const ALLOWED_REDIRECT_HOSTS = new Set([
@@ -2121,31 +2121,36 @@ async function fetchDeezerPreviewByIsrcOrQuery(
   query: string
 ): Promise<{ previewUrl: string | null; isrc: string | null }> {
   let resolvedIsrc = isrc;
+  const trimmedQuery = query.trim();
 
-  if (resolvedIsrc) {
-    const byIsrc = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
-      `https://api.deezer.com/track/isrc:${encodeURIComponent(resolvedIsrc)}`
-    );
-    if (byIsrc && !byIsrc.error) {
-      const previewFromIsrc = normalizePreviewUrl(byIsrc.preview);
-      resolvedIsrc = normalizeCleanIsrc(byIsrc.isrc) ?? resolvedIsrc;
-      if (previewFromIsrc) {
-        return { previewUrl: previewFromIsrc, isrc: resolvedIsrc };
-      }
+  const [byIsrcOutcome, searchOutcome] = await Promise.allSettled([
+    resolvedIsrc
+      ? fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+          `https://api.deezer.com/track/isrc:${encodeURIComponent(resolvedIsrc)}`
+        )
+      : Promise.resolve(null),
+    trimmedQuery
+      ? fetchDeezerJson<{
+          data?: DeezerSearchTrack[];
+          error?: { code?: number };
+        }>(`https://api.deezer.com/search?q=${encodeURIComponent(trimmedQuery)}&limit=1`)
+      : Promise.resolve(null),
+  ]);
+
+  const byIsrc = byIsrcOutcome.status === 'fulfilled' ? byIsrcOutcome.value : null;
+  if (byIsrc && !byIsrc.error) {
+    resolvedIsrc = normalizeCleanIsrc(byIsrc.isrc) ?? resolvedIsrc;
+    const previewFromIsrc = normalizePreviewUrl(byIsrc.preview);
+    if (previewFromIsrc) {
+      return { previewUrl: previewFromIsrc, isrc: resolvedIsrc };
     }
   }
 
-  const trimmedQuery = query.trim();
-  if (trimmedQuery) {
-    const searchJson = await fetchDeezerJson<{
-      data?: DeezerSearchTrack[];
-      error?: { code?: number };
-    }>(`https://api.deezer.com/search?q=${encodeURIComponent(trimmedQuery)}&limit=1`);
-    const topMatch = Array.isArray(searchJson?.data) ? searchJson.data[0] : undefined;
-    const previewFromSearch = normalizePreviewUrl(topMatch?.preview);
-    if (previewFromSearch) {
-      return { previewUrl: previewFromSearch, isrc: resolvedIsrc };
-    }
+  const searchJson = searchOutcome.status === 'fulfilled' ? searchOutcome.value : null;
+  const topMatch = Array.isArray(searchJson?.data) ? searchJson.data[0] : undefined;
+  const previewFromSearch = normalizePreviewUrl(topMatch?.preview);
+  if (previewFromSearch) {
+    return { previewUrl: previewFromSearch, isrc: resolvedIsrc };
   }
 
   return { previewUrl: null, isrc: resolvedIsrc };
@@ -2177,12 +2182,23 @@ export async function resolveTrackIsrcAndPreview(
   if (trimmedId && source === 'deezer') {
     const cleanId = trimmedId.replace(/^dz-/i, '');
     if (/^\d+$/.test(cleanId)) {
-      const detail = await fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
-        `https://api.deezer.com/track/${cleanId}`
-      );
+      const [detailOutcome, fallbackQueryOutcome] = await Promise.allSettled([
+        fetchDeezerJson<DeezerTrackDetail & { error?: { code?: number } }>(
+          `https://api.deezer.com/track/${cleanId}`
+        ),
+        passedIsrc || passedQuery
+          ? fetchDeezerPreviewByIsrcOrQuery(passedIsrc, passedQuery)
+          : Promise.resolve(null),
+      ]);
+
+      const detail = detailOutcome.status === 'fulfilled' ? detailOutcome.value : null;
+      const preResolved =
+        fallbackQueryOutcome.status === 'fulfilled' ? fallbackQueryOutcome.value : null;
+
       if (detail && !detail.error) {
-        let cleanIsrc = normalizeCleanIsrc(detail.isrc) ?? passedIsrc;
-        let previewUrl = normalizePreviewUrl(detail.preview);
+        let cleanIsrc = normalizeCleanIsrc(detail.isrc) ?? preResolved?.isrc ?? passedIsrc;
+        let previewUrl =
+          normalizePreviewUrl(detail.preview) ?? preResolved?.previewUrl ?? null;
 
         if (!previewUrl) {
           const fallbackQuery =
@@ -2210,18 +2226,33 @@ export async function resolveTrackIsrcAndPreview(
         fallbackQuery = `${cachedTrack.name} ${cachedTrack.primaryArtist}`.trim();
       }
     } else if (!resolvedIsrc && /^[A-Za-z0-9]{22}$/.test(trimmedId)) {
-      try {
-        const rawTrack = await spotifyGet<SpotifyRawTrack>(
-          `https://api.spotify.com/v1/tracks/${trimmedId}`
-        );
-        const track = normalizeTrack(rawTrack);
+      const [spotifyOutcome, previewOutcome] = await Promise.allSettled([
+        spotifyGet<SpotifyRawTrack>(`https://api.spotify.com/v1/tracks/${trimmedId}`),
+        fallbackQuery
+          ? fetchDeezerPreviewByIsrcOrQuery(null, fallbackQuery)
+          : Promise.resolve(null),
+      ]);
+
+      if (spotifyOutcome.status === 'fulfilled') {
+        const track = normalizeTrack(spotifyOutcome.value);
         trackCache.set(trimmedId, track);
         resolvedIsrc = track.isrc;
         if (!fallbackQuery) {
           fallbackQuery = `${track.name} ${track.primaryArtist}`.trim();
         }
-      } catch {
-        // Ignore Spotify lookup failure so Deezer query fallback can still resolve a preview
+      }
+
+      const parallelPreview =
+        previewOutcome.status === 'fulfilled' ? previewOutcome.value : null;
+      if (parallelPreview?.previewUrl) {
+        const result = {
+          isrc: resolvedIsrc ?? parallelPreview.isrc,
+          previewUrl: parallelPreview.previewUrl,
+        };
+        if (result.isrc || result.previewUrl) {
+          isrcCache.set(cacheKey, result);
+        }
+        return result;
       }
     }
   }
@@ -2334,7 +2365,7 @@ async function executeSearchQuery(
       if (cachedDeezer) {
         return {
           status: 200,
-          cacheControl: 'public, s-maxage=300, stale-while-revalidate=3600',
+          cacheControl: cacheControlHeader,
           body: {
             tracks: cachedDeezer,
             query: normalizedQuery,
@@ -2352,7 +2383,7 @@ async function executeSearchQuery(
         }
         return {
           status: 200,
-          cacheControl: 'public, s-maxage=300, stale-while-revalidate=3600',
+          cacheControl: cacheControlHeader,
           body: {
             tracks: deezerTracks,
             query: normalizedQuery,

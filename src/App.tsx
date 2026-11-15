@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  type CSSProperties,
   Fragment,
   type ReactNode,
   Suspense,
@@ -186,6 +187,11 @@ interface TrackListSectionProps {
   onClear?: () => void;
 }
 
+const VIRTUAL_ROW_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: 'auto 73px',
+};
+
 const TrackListSection = memo(function TrackListSection({
   title,
   subtitle,
@@ -252,11 +258,7 @@ const TrackListSection = memo(function TrackListSection({
                     track={track}
                     index={index}
                     className={shouldAnimateIn ? 'animate-track-stream-in' : undefined}
-                    style={
-                      index >= 15
-                        ? { contentVisibility: 'auto', containIntrinsicSize: 'auto 73px' }
-                        : undefined
-                    }
+                    style={index >= 15 ? VIRTUAL_ROW_STYLE : undefined}
                     isSelected={selectedTrackId === track.id}
                     showRank={showRanks}
                     isPreviewPlaying={isThisActive && !isAudioLoading}
@@ -375,6 +377,52 @@ function deriveApiStatus(meta: {
 const MAX_CHART_TRACKS = 50;
 const INITIAL_CHART_COUNT = 5;
 const CHART_EXPAND_STEP = 15;
+const SEARCH_DEBOUNCE_MS = 180;
+
+function filterLocalTracks(rawQuery: string, pools: TrackItem[][]): TrackItem[] {
+  const normalized = rawQuery.trim().toLowerCase();
+  if (normalized.length < 2) return [];
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const seenIds = new Set<string>();
+  const seenIsrcs = new Set<string>();
+  const scored: Array<{ track: TrackItem; score: number }> = [];
+
+  for (const pool of pools) {
+    for (const track of pool) {
+      if (!track?.id || seenIds.has(track.id)) continue;
+      const iso = track.isrc?.trim().toUpperCase() || '';
+      if (iso && seenIsrcs.has(iso)) continue;
+
+      const titleLower = track.name.toLowerCase();
+      const artistLower = track.artists.toLowerCase();
+      const haystack = `${titleLower} ${artistLower} ${track.albumName.toLowerCase()} ${iso.toLowerCase()}`;
+
+      let allMatch = true;
+      for (const token of tokens) {
+        if (!haystack.includes(token)) {
+          allMatch = false;
+          break;
+        }
+      }
+      if (!allMatch) continue;
+
+      seenIds.add(track.id);
+      if (iso) seenIsrcs.add(iso);
+
+      let score = 0;
+      if (titleLower === normalized) score += 100;
+      else if (titleLower.startsWith(normalized)) score += 60;
+      else if (titleLower.includes(normalized)) score += 35;
+      if (artistLower.includes(normalized)) score += 20;
+      scored.push({ track, score });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 8).map((entry) => entry.track);
+}
 
 function mergeChartTracks(existing: TrackItem[], incoming: TrackItem[]): TrackItem[] {
   const seenIds = new Set<string>();
@@ -442,6 +490,8 @@ function TrackCodeWorkspace() {
   );
 
   const [recentTracks, setRecentTracks] = useState<TrackItem[]>(() => loadRecentTracks());
+  const recentTracksRef = useRef(recentTracks);
+  recentTracksRef.current = recentTracks;
   const [sheetTrack, setSheetTrack] = useState<TrackItem | null>(null);
   const [inspectedTrack, setInspectedTrack] = useState<TrackItem | null>(null);
   const [fetchingIsrcTrackId, setFetchingIsrcTrackId] = useState<string | null>(null);
@@ -1107,11 +1157,20 @@ function TrackCodeWorkspace() {
       return;
     }
 
+    const localMatches = filterLocalTracks(trimmedQuery, [
+      recentTracksRef.current,
+      quickTryChartsRef.current.global,
+      quickTryChartsRef.current.sriLanka,
+    ]);
+
     if (trimmedQuery.length < 3) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      setResults([]);
+      setResults(localMatches);
+      if (localMatches.length > 0) {
+        setInspectedTrack(localMatches[0]);
+      }
       setIsLoading(false);
       setErrorMessage(null);
       setIsRateLimited(false);
@@ -1119,10 +1178,19 @@ function TrackCodeWorkspace() {
       return;
     }
 
+    setResults(localMatches);
+    if (localMatches.length > 0) {
+      setInspectedTrack(localMatches[0]);
+    }
+    setIsLoading(true);
+    setErrorMessage(null);
+    setIsRateLimited(false);
+    setHasSearched(false);
+
     debounceTimerRef.current = window.setTimeout(() => {
       debounceTimerRef.current = null;
       void executeLookup(trimmedQuery, 'search');
-    }, 500);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => {
       if (debounceTimerRef.current) {
@@ -1335,12 +1403,18 @@ function TrackCodeWorkspace() {
         inputRef.current?.focus();
         return;
       }
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      skipNextAutoLookupRef.current = clipText;
       setQuery(clipText);
+      void executeLookup(clipText, isSpotifyTrackLink(clipText) ? 'link' : 'search');
     } catch {
       inputRef.current?.focus();
       showToast('Allow paste or long-press input', 'info');
     }
-  }, [showToast]);
+  }, [showToast, executeLookup]);
 
   const handleClearInput = useCallback(() => {
     if (abortControllerRef.current) {
@@ -1770,15 +1844,20 @@ function TrackCodeWorkspace() {
               <div className="px-4 pt-2 lg:px-0 lg:pt-0">
                 {trimmedQuery ? (
                   <>
-                    {isLoading && <SkeletonRows count={4} />}
+                    {isLoading && results.length === 0 && <SkeletonRows count={4} />}
 
-                    {!isLoading && !errorMessage && !hasSearched && !isLinkMode && trimmedQuery.length < 3 && (
-                      <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
-                        <p className="text-[13px] text-[#8E8E93]">
-                          Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
-                        </p>
-                      </div>
-                    )}
+                    {!isLoading &&
+                      !errorMessage &&
+                      !hasSearched &&
+                      !isLinkMode &&
+                      trimmedQuery.length < 3 &&
+                      results.length === 0 && (
+                        <div className="liquid-glass rounded-[20px] px-4 py-4 text-center">
+                          <p className="text-[13px] text-[#8E8E93]">
+                            Type at least <span className="font-medium text-white">3 characters</span> to search, or press <span className="font-medium text-white">Search</span>.
+                          </p>
+                        </div>
+                      )}
 
                     {!isLoading && errorMessage && (
                       <div className="relative overflow-hidden rounded-[32px] border border-white/[0.12] bg-gradient-to-b from-[#232326] to-[#151517] px-5 pt-3 pb-5 text-center shadow-[0_18px_48px_rgba(0,0,0,0.65)]">
@@ -1866,8 +1945,8 @@ function TrackCodeWorkspace() {
                       </Suspense>
                     )}
 
-                    {!isLoading && !errorMessage && results.length > 0 && (
-                      <section key={trimmedQuery} aria-label="Search results" className="animate-fade-up pt-1 lg:pt-0">
+                    {!errorMessage && results.length > 0 && (
+                      <section aria-label="Search results" className="animate-fade-up pt-1 lg:pt-0">
                         <div className="flex items-center justify-between px-1 pb-2">
                           <h2 className="text-[13px] font-semibold tracking-wide text-[#8E8E93]">
                             {isLinkMode ? 'Matched Track' : 'Results · Tap to Copy ISRC'}

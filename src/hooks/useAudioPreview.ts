@@ -50,15 +50,29 @@ export function useAudioPreview(options?: UseAudioPreviewOptions): UseAudioPrevi
   const isAudioLoadingRef = useRef(false);
   isAudioLoadingRef.current = isAudioLoading;
 
+  const lastProgressCommitTimeRef = useRef(0);
+  const lastProgressValueRef = useRef(0);
+
   const getOrCreateAudio = useCallback(() => {
     if (audioRef.current) return audioRef.current;
     const audio = new Audio();
     audio.crossOrigin = 'anonymous';
     audio.preload = 'none';
     audio.addEventListener('timeupdate', () => {
+      const now = performance.now();
       const duration =
         Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 30;
-      setAudioProgress(Math.min(1, Math.max(0, audio.currentTime / duration)));
+      const nextProgress = Math.min(1, Math.max(0, audio.currentTime / duration));
+      if (
+        nextProgress < 1 &&
+        now - lastProgressCommitTimeRef.current < 200 &&
+        Math.abs(nextProgress - lastProgressValueRef.current) < 0.04
+      ) {
+        return;
+      }
+      lastProgressCommitTimeRef.current = now;
+      lastProgressValueRef.current = nextProgress;
+      setAudioProgress(nextProgress);
     });
     audio.addEventListener('playing', () => {
       isAudioLoadingRef.current = false;
@@ -70,6 +84,7 @@ export function useAudioPreview(options?: UseAudioPreviewOptions): UseAudioPrevi
     });
     audio.addEventListener('ended', () => {
       isAudioLoadingRef.current = false;
+      lastProgressValueRef.current = 0;
       setPlayingTrackId(null);
       setIsAudioLoading(false);
       setAudioProgress(0);
@@ -77,6 +92,7 @@ export function useAudioPreview(options?: UseAudioPreviewOptions): UseAudioPrevi
     audio.addEventListener('error', () => {
       if (!audio.getAttribute('src')) return;
       isAudioLoadingRef.current = false;
+      lastProgressValueRef.current = 0;
       setPlayingTrackId(null);
       setIsAudioLoading(false);
       setAudioProgress(0);
