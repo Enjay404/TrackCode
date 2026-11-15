@@ -41,6 +41,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ALBUM_TYPE_BADGE_STYLE, ALBUM_TYPE_LABEL } from '../utils/badgeStyles';
+import { BrandLogo } from './BrandLogo';
 import { FooterDock } from './FooterDock';
 import { SriLankaFlag } from './SriLankaFlag';
 
@@ -897,10 +898,7 @@ const PromoFiveTryNowLayout = memo(function PromoFiveTryNowLayout() {
     <>
       {/* Top Section (Above Sticker Zone) */}
       <div className="relative z-10 flex flex-col items-center text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.14] bg-white/[0.06] px-3 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/85">
-          <span>TrackCode · ISRC FINDER</span>
-          <SriLankaFlag />
-        </span>
+        <BrandLogo className="h-[28px]" />
 
         <h2 className="mt-2.5 text-[32px] font-bold leading-none tracking-tight text-white">
           Try Now

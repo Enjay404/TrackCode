@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  Fragment,
   type ReactNode,
   Suspense,
   lazy,
@@ -25,6 +26,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { BrandLogo } from './components/BrandLogo';
 import { DesktopInspectorCard } from './components/DesktopInspectorCard';
 import { DynamicIslandToast, type ToastState } from './components/DynamicIslandToast';
 import { FooterDock } from './components/FooterDock';
@@ -161,6 +163,7 @@ interface TrackListSectionProps {
   isAudioLoading?: boolean;
   audioProgress?: number;
   showRanks?: boolean;
+  isExpandedScroll?: boolean;
   isLoading?: boolean;
   skeletonCount?: number;
   onTogglePreview?: (track: TrackItem) => void;
@@ -181,6 +184,7 @@ const TrackListSection = memo(function TrackListSection({
   isAudioLoading = false,
   audioProgress = 0,
   showRanks = false,
+  isExpandedScroll = false,
   isLoading = false,
   skeletonCount = 4,
   onTogglePreview,
@@ -208,30 +212,45 @@ const TrackListSection = memo(function TrackListSection({
         ) : null}
       </div>
       {headerControl}
-      <div className="touch-pan-y space-y-2">
-        {isLoading ? (
-          <SkeletonRows count={skeletonCount} />
-        ) : (
-          tracks.map((track, index) => {
-            const isThisActive = playingTrackId === track.id;
-            return (
-              <TrackCapsule
-                key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}
-                track={track}
-                index={index}
-                isSelected={selectedTrackId === track.id}
-                showRank={showRanks}
-                isPreviewPlaying={isThisActive && !isAudioLoading}
-                isPreviewLoading={isThisActive && isAudioLoading}
-                previewProgress={isThisActive ? audioProgress : 0}
-                onTogglePreview={onTogglePreview}
-                onSelect={onSelect}
-              />
-            );
-          })
-        )}
-      </div>
-      {!isLoading && footerControl}
+      {isLoading ? (
+        <SkeletonRows count={skeletonCount} />
+      ) : (
+        <div className="overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
+          <div
+            className={`touch-pan-y ${
+              isExpandedScroll
+                ? 'trackcode-scroll max-h-[410px] overflow-y-auto overscroll-contain md:max-h-[460px]'
+                : ''
+            }`}
+          >
+            {tracks.map((track, index) => {
+              const isThisActive = playingTrackId === track.id;
+              return (
+                <Fragment key={listKeyPrefix ? `${listKeyPrefix}-${track.id}` : track.id}>
+                  {index > 0 && (
+                    <div
+                      aria-hidden="true"
+                      className="ml-[78px] mr-4 h-px scale-y-50 bg-white/[0.08]"
+                    />
+                  )}
+                  <TrackCapsule
+                    track={track}
+                    index={index}
+                    isSelected={selectedTrackId === track.id}
+                    showRank={showRanks}
+                    isPreviewPlaying={isThisActive && !isAudioLoading}
+                    isPreviewLoading={isThisActive && isAudioLoading}
+                    previewProgress={isThisActive ? audioProgress : 0}
+                    onTogglePreview={onTogglePreview}
+                    onSelect={onSelect}
+                  />
+                </Fragment>
+              );
+            })}
+          </div>
+          {footerControl}
+        </div>
+      )}
     </section>
   );
 });
@@ -1359,18 +1378,13 @@ function TrackCodeWorkspace() {
         />
 
         {/* Responsive Header: Mobile Large Title / Desktop Top Bar */}
-        <header className="relative z-10 flex items-start justify-between px-4 pt-1 pb-3 lg:items-center lg:px-0 lg:pt-8 lg:pb-6">
-          <div className="flex flex-col items-start">
-            <h1 className="title-ambient-glow text-[34px] font-bold leading-[1.08] tracking-[-0.03em] text-white">
-              TrackCode
-            </h1>
-            <p className="mt-1 flex items-center gap-1.5 pl-[1.5px] text-[11px] font-semibold uppercase leading-none tracking-[0.14em] text-[#8E8E93]">
-              <span>ISRC FINDER</span>
-              <SriLankaFlag />
-            </p>
-          </div>
+        <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-1 pb-3 lg:px-0 lg:pt-8 lg:pb-6">
+          <h1 className="flex items-center">
+            <span className="sr-only">TrackCode — ISRC Finder</span>
+            <BrandLogo className="h-[38px] sm:h-[42px]" />
+          </h1>
 
-          <div className="flex items-center gap-2 pt-0.5 lg:gap-3 lg:pt-0">
+          <div className="flex items-center gap-2 lg:gap-3">
             <div className="hidden lg:block">
               <ApiStatusPill status={apiStatus} />
             </div>
@@ -1605,23 +1619,31 @@ function TrackCodeWorkspace() {
                             ↑↓ navigate · Enter copy
                           </span>
                         </div>
-                        <div className="touch-pan-y space-y-2">
+                        <div className="touch-pan-y overflow-hidden rounded-[20px] border border-white/[0.08] border-t-white/[0.15] bg-[#1C1C1E] shadow-[0_10px_30px_rgba(0,0,0,0.45)]">
                           {results.map((track, index) => {
                             const isThisActive = playingTrackId === track.id;
                             return (
-                              <TrackCapsule
-                                key={track.id}
-                                track={track}
-                                index={index}
-                                isSelected={
-                                  (isDesktop ? activeDesktopTrack?.id : sheetTrack?.id) === track.id
-                                }
-                                isPreviewPlaying={isThisActive && !isAudioLoading}
-                                isPreviewLoading={isThisActive && isAudioLoading}
-                                previewProgress={isThisActive ? audioProgress : 0}
-                                onTogglePreview={handleToggleTrackPreview}
-                                onSelect={handleSelectTrack}
-                              />
+                              <Fragment key={track.id}>
+                                {index > 0 && (
+                                  <div
+                                    aria-hidden="true"
+                                    className="ml-[78px] mr-4 h-px scale-y-50 bg-white/[0.08]"
+                                  />
+                                )}
+                                <TrackCapsule
+                                  track={track}
+                                  index={index}
+                                  isSelected={
+                                    (isDesktop ? activeDesktopTrack?.id : sheetTrack?.id) ===
+                                    track.id
+                                  }
+                                  isPreviewPlaying={isThisActive && !isAudioLoading}
+                                  isPreviewLoading={isThisActive && isAudioLoading}
+                                  previewProgress={isThisActive ? audioProgress : 0}
+                                  onTogglePreview={handleToggleTrackPreview}
+                                  onSelect={handleSelectTrack}
+                                />
+                              </Fragment>
                             );
                           })}
                         </div>
@@ -1651,7 +1673,7 @@ function TrackCodeWorkspace() {
                       </section>
                     )}
 
-                    {/* Recent History Liquid Glass Capsules */}
+                    {/* Recent History Grouped Inset Container */}
                     {recentTracks.length > 0 && (
                       <TrackListSection
                         title="Recent"
@@ -1667,7 +1689,7 @@ function TrackCodeWorkspace() {
                       />
                     )}
 
-                    {/* Popular Hits Liquid Glass Capsules */}
+                    {/* Popular Hits Grouped Inset Container */}
                     {(isQuickTryLoading ||
                       quickTryCharts.global.length > 0 ||
                       quickTryCharts.sriLanka.length > 0) && (
@@ -1689,10 +1711,10 @@ function TrackCodeWorkspace() {
                               type="button"
                               disabled={isStreamingMore}
                               onClick={() => void handleToggleShowMoreHits()}
-                              className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-white/[0.08] border-t-white/[0.14] bg-gradient-to-b from-[#1C1C1F] to-[#131315] px-4 py-3 text-[13px] font-medium text-white/80 transition-all duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
+                              className={`flex w-full items-center justify-center gap-1.5 border-t border-white/[0.08] px-4 py-3 text-[13px] font-medium text-white/75 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/30 ${
                                 isStreamingMore
                                   ? 'cursor-wait opacity-85'
-                                  : 'cursor-pointer hover:from-[#232326] hover:to-[#17171A] hover:text-white active:scale-[0.985]'
+                                  : 'cursor-pointer hover:bg-white/[0.03] hover:text-white active:bg-[#2A2A2E]'
                               }`}
                             >
                               {isStreamingMore ? (
@@ -1724,6 +1746,7 @@ function TrackCodeWorkspace() {
                         isAudioLoading={isAudioLoading}
                         audioProgress={audioProgress}
                         showRanks={true}
+                        isExpandedScroll={showAllHits}
                         isLoading={isQuickTryLoading}
                         skeletonCount={5}
                         onTogglePreview={handleToggleTrackPreview}
